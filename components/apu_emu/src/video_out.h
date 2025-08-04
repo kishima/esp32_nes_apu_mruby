@@ -173,7 +173,7 @@ void video_init_hw(int line_width, int samples_per_cc)
 
     //  IR input if used
 #ifdef IR_PIN
-    pinMode(IR_PIN,INPUT);
+    gpio_set_direction((gpio_num_t)IR_PIN, GPIO_MODE_INPUT);
 #endif
 }
 
