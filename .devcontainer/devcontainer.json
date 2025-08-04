@@ -1,0 +1,18 @@
+{
+  "name": "r2p2-esp32-dev-container",
+  "image": "esp32_build_container:v5.4.1",
+  "privileged": true,
+  "mounts": [ 
+    "source=/dev/ttyACM0,target=/dev/ttyACM0,type=bind"
+  ],
+  "runArgs": [
+    "--group-add=dialout"
+  ],
+  "containerEnv": {
+    "LC_ALL": "C.UTF-8",
+    "LANG": "C.UTF-8"
+  },
+  "postStartCommand": "echo 'source /opt/esp/idf/export.sh' >> ~/.bashrc",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/project,type=bind",
+  "workspaceFolder": "/project"
+}
