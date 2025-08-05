@@ -531,7 +531,7 @@ void IRAM_ATTR burst_pal(uint16_t* line)
 
 #ifdef PERF
 #define BEGIN_TIMING()  uint32_t t = cpu_ticks()
-#define END_TIMING() t = cpu_ticks() - t; _blit_ticks_min = min(_blit_ticks_min,t); _blit_ticks_max = max(_blit_ticks_max,t);
+#define END_TIMING() t = cpu_ticks() - t; _blit_ticks_min = std::min(_blit_ticks_min,t); _blit_ticks_max = std::max(_blit_ticks_max,t);
 #define ISR_BEGIN() uint32_t t = cpu_ticks()
 #define ISR_END() t = cpu_ticks() - t;_isr_us += (t+120)/240;
 uint32_t _blit_ticks_min = 0;

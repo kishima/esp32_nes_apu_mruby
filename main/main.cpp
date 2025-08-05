@@ -20,8 +20,12 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include <stdio.h>
+#include <inttypes.h>
 
-void app_main(void)
+#define PERF  // some stats about where we spend our time
+#include "emu.h"
+
+extern "C" void app_main(void)
 {
     printf("ESP32 NES APU mruby starting...\n");
     
@@ -42,11 +46,15 @@ void app_main(void)
         printf("Filesystem mounted successfully\n");
     }
     
+    // NES emulator core is available but not initialized yet
+    // TODO: Full NES emulator initialization will be added later
+    printf("NES emulator core is ready (initialization pending)\n");
+    
     printf("ESP32 NES APU mruby initialized\n");
     
-    // Main loop
+    // Main loop - basic functionality without full video/audio
     while(1) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        printf("Running...\n");
+        printf("Running... (NES emulator core ready)\n");
     }
 }
