@@ -23,10 +23,11 @@ using namespace std;
 // Uses app1 as a cache with a crappy FS on top - default arduino config gives 1280k
 
 #ifdef ESP_PLATFORM
-#include <esp_spi_flash.h>
+#include <spi_flash_mmap.h>
 #include <esp_attr.h>
 #include <esp_partition.h>
-#include "rom/miniz.h"
+#include <inttypes.h>
+// #include "rom/miniz.h" // miniz not available in ESP-IDF v5.4
 
 // only map 1 file at a time
 spi_flash_mmap_handle_t _file_handle = 0;
@@ -35,8 +36,8 @@ static void print_part(const esp_partition_t *pPart)
 {
     printf("main: partition type = %d.\n", pPart->type);
     printf("main: partition subtype = %d.\n", pPart->subtype);
-    printf("main: partition starting address = %x.\n", pPart->address);
-    printf("main: partition size = %x.\n", pPart->size);
+    printf("main: partition starting address = %lx.\n", pPart->address);
+    printf("main: partition size = %lx.\n", pPart->size);
     printf("main: partition label = %s.\n", pPart->label);
     printf("main: partition encrypted = %d.\n", pPart->encrypted);
     printf("\n");
@@ -98,7 +99,7 @@ public:
         // dump dir
         for (int i = 0; i < _count; i++) {
             if (_dir[i].sig == FSIG)
-                printf("%08X %08X %s\n",_dir[i].offset,_dir[i].len,_dir[i].name);
+                printf("%08" PRIx32 " %08" PRIx32 " %s\n",_dir[i].offset,_dir[i].len,_dir[i].name);
         }
     }
 
@@ -122,11 +123,11 @@ public:
     {
         if (!file)
             return 0;
-        printf("CrapFS::mmap mapping %s offset:%08X len:%d\n",file->name,file->offset,file->len);
+        printf("CrapFS::mmap mapping %s offset:%08" PRIx32 " len:%lu\n",file->name,file->offset,file->len);
         void* data = 0;
-        if (esp_partition_mmap(_part, file->offset, file->len, SPI_FLASH_MMAP_DATA, (const void**)&data, &_file_handle) == 0)
+        if (esp_partition_mmap(_part, file->offset, file->len, ESP_PARTITION_MMAP_DATA, (const void**)&data, &_file_handle) == 0)
         {
-            printf("CrapFS::mmap mapped to %08X\n",data);
+            printf("CrapFS::mmap mapped to %p\n",data);
             return (uint8_t*)data;
         }
         return 0;
@@ -149,7 +150,7 @@ public:
             return -1;
         #define BUF_SIZE 4096
         uint8_t* buf = new uint8_t[BUF_SIZE];
-        esp_err_t err;
+        esp_err_t err = ESP_OK;
         int i = 0;
         while (i < len) {
             int n = len-i;
@@ -163,7 +164,7 @@ public:
             i += n;
         }
         fclose(f);
-        delete buf;
+        delete[] buf;
         return err;
     }
 
@@ -177,7 +178,7 @@ public:
                 _dir[i].offset = start;
                 _dir[i].len = len;  //
                 strcpy(_dir[i].name,path.c_str());
-                printf("CrapFS::created %s %08X %d\n",_dir[i].name,start,len);
+                printf("CrapFS::created %s %08" PRIx32 " %d\n",_dir[i].name,start,len);
                 esp_err_t err = esp_partition_erase_range(_part,0, DIR_BLOCK_SIZE);     // erase dir
                 if (err == 0)
                     err = esp_partition_write(_part, 0, _buf, DIR_BLOCK_SIZE);    // update dir
@@ -263,44 +264,10 @@ uint32_t generic_map(uint32_t bits, const uint32_t* m)
 // could actually use the screen mem (which might look cool) or the main cpu mem for buffer
 int unpack(const char* dst, const uint8_t* d, int len)
 {
-    printf("unpacking %s\n",dst);
-    FILE* f = mkfile(dst);
-    if (!f)
-        return -1;
-
-    #define BUF_SIZE 0x8000
-    uint8_t* buf = new uint8_t[BUF_SIZE];
-    if (!buf) {
-        fclose(f);
-        return -1;  // could use a smaller window on compression but would not generalize to other people's zips
-    }
-
-    tinfl_decompressor* dec = new tinfl_decompressor;   // largist
-    size_t in_bytes, out_bytes;
-    tinfl_status status;
-    int i = 0;
-
-    tinfl_init(dec);
-    while (i < len) {
-        in_bytes = len-i;
-        out_bytes = BUF_SIZE;
-        status = tinfl_decompress(dec,d+i,&in_bytes,buf,buf,&out_bytes,11);
-        if (out_bytes != fwrite(buf,1,out_bytes,f)) {
-            status = TINFL_STATUS_FAILED;
-            break;
-        }
-        i += in_bytes;
-    }
-
-    delete [] buf;
-    delete dec;
-    fclose(f);
-
-    if (status == TINFL_STATUS_FAILED) {
-        remove(dst);
-        return -1;
-    }
-    return 0;
+    printf("unpack disabled: miniz not available in ESP-IDF v5.4\n");
+    printf("requested: %s %d bytes\n",dst,len);
+    // TODO: Implement alternative decompression or use uncompressed files
+    return -1; // Disabled for now
 }
 
 Emu::Emu(const char* n,int w,int h, int st, int aformat, int cc, int f) :

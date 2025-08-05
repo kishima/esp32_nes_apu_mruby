@@ -3,9 +3,6 @@ idf_component_register(
         "src/emu.cpp"
         "src/emu_nofrendo.cpp"
         "src/gui.cpp"
-        "src/hid_server/hid_server.cpp"
-        "src/hid_server/hci_transport_esp32.cpp"
-        "src/hid_server/hci_server.cpp"
         "src/nofrendo/bitmap.c"
         "src/nofrendo/libsnss.c"
         "src/nofrendo/gui_elem.c"
@@ -75,8 +72,7 @@ idf_component_register(
         "src/nofrendo"
         "src/hid_server"
     REQUIRES 
-        "esp_spiffs" 
-        "bt" 
+        "spiffs" 
         "driver" 
         "esp_partition"
         "esp_timer"
@@ -84,4 +80,5 @@ idf_component_register(
         "esp_system"
         "soc"
         "esp_hw_support"
+        "spi_flash"
 )

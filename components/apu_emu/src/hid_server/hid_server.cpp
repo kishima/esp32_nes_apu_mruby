@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <vector>
 #include <string>
+#include <inttypes.h>
 using namespace std;
 
 #include "hci_server.h"

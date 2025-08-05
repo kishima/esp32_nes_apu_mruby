@@ -326,7 +326,7 @@ public:
     int OVERLAY_WIDTH;
     int OVERLAY_HEIGHT;
 
-    Overlay() : _hilite(0),_buf(0)
+    Overlay() : _buf(0),_hilite(0)
     {
     }
 

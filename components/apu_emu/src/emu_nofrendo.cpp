@@ -17,6 +17,7 @@
 
 #include "emu.h"
 #include "media.h"
+#include <inttypes.h>
 
 extern "C" {
 #include "nofrendo/osd.h"
@@ -73,7 +74,7 @@ uint32_t _nes_yuv_4_phase_pal[] = {
     0x454A433E,0x3E48463D,0x3943483E,0x38404A42,0x39404B44,0x3E3E3E3E,0x1B1B1B1B,0x1B1B1B1B,
 };
 
-static void make_nes_pal_uv(uint8_t *u,uint8_t *v)
+static void __attribute__((unused)) make_nes_pal_uv(uint8_t *u,uint8_t *v)
 {
     for (int c = 0; c < 16; c++) {
         if (c == 0 || c > 12)
@@ -145,7 +146,7 @@ static void make_nes_palette(int phases)
         uint32_t pi = 0;
         for (int j = 0; j < 4; j++)
             pi = (pi << 8) | p[j] >> 8;
-        printf("0x%08X,",pi);
+        printf("0x%08" PRIx32 ",",pi);
         if ((i & 7) == 7)
             printf("\n");
     }

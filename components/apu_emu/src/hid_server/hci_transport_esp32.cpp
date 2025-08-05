@@ -1,6 +1,7 @@
 #include <esp_bt.h>
-#include <esp32-hal-log.h>
-#include <esp32-hal-bt.h>
+#include <esp_log.h>
+#include <esp_bt_main.h>
+#include <esp_vhci_api.h>
 #include <nvs.h>
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -25,8 +26,8 @@ struct {
 
 hci_handle hci_open()
 {
-    if (!btStart()) {
-        log_e("btStart failed");
+    if (esp_bluedroid_init() != ESP_OK || esp_bluedroid_enable() != ESP_OK) {
+        ESP_LOGE("HCI", "btStart failed");
         return NULL;
     }
 
