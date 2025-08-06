@@ -124,7 +124,7 @@ public:
             return 0;
         printf("CrapFS::mmap mapping %s offset:%08X len:%d\n",file->name,file->offset,file->len);
         void* data = 0;
-        if (esp_partition_mmap(_part, file->offset, file->len, SPI_FLASH_MMAP_DATA, (const void**)&data, &_file_handle) == 0)
+        if (esp_partition_mmap(_part, file->offset, file->len, ESP_PARTITION_MMAP_DATA, (const void**)&data, &_file_handle) == 0)
         {
             printf("CrapFS::mmap mapped to %08X\n",data);
             return (uint8_t*)data;
