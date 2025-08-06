@@ -1048,29 +1048,29 @@ static void pad_key(int mask, int state, int key)
     gui_key(key,state & mask,0);
 }
 
-static void wii()
-{
-    int pad = wii_states[0].common();
-    pad_key(wii_right,pad,82);  // up
-    pad_key(wii_left,pad,81);   // down
-    pad_key(wii_down,pad,79);   // right
-    pad_key(wii_up,pad,80);     // left
-    pad_key(wii_home,pad,58);   // home/gui
-    pad_key(wii_a | wii_one | wii_two,pad,40); // enter (A)
-    _last_pad = pad;
-}
+// static void wii()
+// {
+//     int pad = wii_states[0].common();
+//     pad_key(wii_right,pad,82);  // up
+//     pad_key(wii_left,pad,81);   // down
+//     pad_key(wii_down,pad,79);   // right
+//     pad_key(wii_up,pad,80);     // left
+//     pad_key(wii_home,pad,58);   // home/gui
+//     pad_key(wii_a | wii_one | wii_two,pad,40); // enter (A)
+//     _last_pad = pad;
+// }
 
-static void ir(const uint8_t* j, int len)
-{
-    int pad = j[0] + (j[1] << 8);
-    pad_key(GENERIC_UP,pad,82);  // up
-    pad_key(GENERIC_DOWN,pad,81);   // down
-    pad_key(GENERIC_RIGHT,pad,79);   // right
-    pad_key(GENERIC_LEFT,pad,80);     // left
-    pad_key(GENERIC_RESET | GENERIC_FIRE_Z,pad,58);   // home/gui
-    pad_key(GENERIC_FIRE | GENERIC_FIRE_C | GENERIC_FIRE_B | GENERIC_FIRE_A,pad,40); // enter (A)
-    _last_pad = pad;
-}
+// static void ir(const uint8_t* j, int len)
+// {
+//     int pad = j[0] + (j[1] << 8);
+//     pad_key(GENERIC_UP,pad,82);  // up
+//     pad_key(GENERIC_DOWN,pad,81);   // down
+//     pad_key(GENERIC_RIGHT,pad,79);   // right
+//     pad_key(GENERIC_LEFT,pad,80);     // left
+//     pad_key(GENERIC_RESET | GENERIC_FIRE_Z,pad,58);   // home/gui
+//     pad_key(GENERIC_FIRE | GENERIC_FIRE_C | GENERIC_FIRE_B | GENERIC_FIRE_A,pad,40); // enter (A)
+//     _last_pad = pad;
+// }
 
 void gui_hid(const uint8_t* hid, int len)  // Parse HID event
 {
@@ -1083,8 +1083,8 @@ void gui_hid(const uint8_t* hid, int len)  // Parse HID event
     */
     switch (hid[1]) {
         case 0x01: keyboard(hid+1,len-1);   break;   // parse keyboard and maintain 1 key state
-        case 0x32: wii();                   break;   // parse wii stuff: generic?
-        case 0x42: ir(hid+2,len);           break;   // ir joy
+        // case 0x32: wii();                   break;   // parse wii stuff: generic?
+        // case 0x42: ir(hid+2,len);           break;   // ir joy
     }
     _gui._emu->hid(hid+1,len-1);    // send raw events
 }

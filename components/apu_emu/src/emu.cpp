@@ -22,11 +22,11 @@ using namespace std;
 // Handly for NES/SMS carts
 // Uses app1 as a cache with a crappy FS on top - default arduino config gives 1280k
 
-#ifdef ESP_PLATFORM
-#include <esp_spi_flash.h>
+#include <spi_flash_mmap.h>
 #include <esp_attr.h>
 #include <esp_partition.h>
-#include "rom/miniz.h"
+#include <inttypes.h>
+// #include "rom/miniz.h" // miniz not available in ESP-IDF v5.4
 
 // only map 1 file at a time
 spi_flash_mmap_handle_t _file_handle = 0;
@@ -220,32 +220,6 @@ FILE* mkfile(const char* path)
 {
     return fopen(path,"wb");
 }
-
-#else
-#include <sys/stat.h>
-#include "../miniz.h"
-
-uint8_t* map_file(const char* path, int len)
-{
-    uint8_t* d;
-    Emu::load(path,&d,&len);
-    return d;
-}
-
-void unmap_file(uint8_t* ptr)
-{
-    delete ptr;
-}
-
-FILE* mkfile(const char* path)
-{
-    std::string v = path;
-    std::string dir = v.substr(0,v.find_last_of("/"));
-    mkdir(dir.c_str(), 0755);
-    return fopen(path,"wb");
-}
-
-#endif
 
 // map one bit array to another
 uint32_t generic_map(uint32_t bits, const uint32_t* m)

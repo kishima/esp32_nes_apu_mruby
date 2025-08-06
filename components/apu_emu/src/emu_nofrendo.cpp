@@ -361,6 +361,8 @@ public:
     // raw HID data. handle WII/IR mappings
     virtual void hid(const uint8_t* d, int len)
     {
+        return;
+        #if 0 //disable HID
         if (d[0] != 0x32 && d[0] != 0x42)
             return;
         bool ir = *d++ == 0x42;
@@ -385,6 +387,7 @@ public:
                 p >>= 1;
             }
         }
+        #endif
     }
 
     /*
