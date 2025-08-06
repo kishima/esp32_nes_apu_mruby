@@ -24,36 +24,11 @@
 #include <algorithm>
 #include "soc/rtc.h"
 
-extern "C" {
-// HID stub function declarations
-int hid_init(const char* local_name);
-int hid_update();
-}
-
-#define PERF  // some stats about where we spend our time
 #include "emu.h"
-// Temporarily disable video_out.h to focus on APU functionality
-// #include "video_out.h"
 
 // esp_8_bit
-// Atari 8 computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
-// Supports NTSC/PAL composite video, Bluetooth Classic keyboards and joysticks
-
-//  Choose one of the video standards: PAL,NTSC
 #define VIDEO_STANDARD NTSC
-
-//  Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI
-#define EMULATOR EMU_NES  // Changed to EMU_NES as EMU_ATARI functions are not available
-
-//  Many emus work fine on a single core (S2), file system access can cause a little flickering
-//  #define SINGLE_CORE
-
-// The filesystem should contain folders named for each of the emulators i.e.
-//    atari800
-//    nofrendo
-//    smsplus
-// Folders will be auto-populated on first launch with a built in selection of sample media.
-// Use 'ESP32 Sketch Data Upload' from the 'Tools' menu to copy a prepared data folder to ESP32
+#define EMULATOR EMU_NES
 
 // Note: gui_start and gui_update are implemented in gui.cpp component
 
@@ -81,51 +56,12 @@ void audio_write_16(const int16_t* samples, int channels, int length) {
     }
 }
 
-// System preferences stubs (normally stored in NVS)
-int sys_get_pref(const char* key, char* value, int max_len) {
-    // Return empty/default values for preferences
-    if (value && max_len > 0) {
-        value[0] = 0;  // Empty string
-    }
-    return 0;
-}
-
-void sys_set_pref(const char* key, const char* value) {
-    printf("Setting preference: %s = %s\n", key, value);
-}
-
-// IR input stub
-int get_hid_ir(uint8_t* data) {
-    // No IR input for now
-    return 0;
-}
-
 // Global variables for video system (stubs)
 volatile int _frame_counter = 0;
 uint32_t _blit_ticks_min = 0xFFFFFFFF;
 uint32_t _blit_ticks_max = 0;
 uint32_t _isr_us = 0;
 uint8_t** _lines = nullptr;
-
-// Create a new emulator, messy ifdefs ensure that only one links at a time
-Emu* NewEmulator()
-{  
-  #if (EMULATOR==EMU_NES)
-  return NewNofrendo(VIDEO_STANDARD);
-  #endif
-  #if (EMULATOR==EMU_SMS)
-  // return NewSMSPlus(VIDEO_STANDARD);  // Not available in current build
-  printf("SMS emulator not available in current build\n");
-  return nullptr;
-  #endif
-  #if (EMULATOR==EMU_ATARI)
-  // return NewAtari800(VIDEO_STANDARD);  // Not available in current build
-  printf("Atari emulator not available in current build\n");
-  return nullptr;
-  #endif
-  printf("Must choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI\n");
-  return nullptr;
-}
 
 Emu* _emu = 0;            // emulator running on core 0
 uint32_t _frame_time = 0;
@@ -180,54 +116,21 @@ esp_err_t mount_filesystem()
   return e;
 }
 
-#ifdef PERF
-void perf()
-{
-  static int _next = 0;
-  if (_drawn >= _next) {
-    float elapsed_us = 120*1000000/(_emu->standard ? 60 : 50);
-    _next = _drawn + 120;
-    
-    printf("frame_time:%lu drawn:%" PRIu32 " displayed:%d blit_ticks:%" PRIu32 "->%" PRIu32 ", isr time:%2.2f%%\n",
-      _frame_time/240, _drawn, _frame_counter, _blit_ticks_min, _blit_ticks_max, (_isr_us*100)/elapsed_us);
-      
-    _blit_ticks_min = 0xFFFFFFFF;
-    _blit_ticks_max = 0;
-    _isr_us = 0;
-  }
-}
-#else
-void perf(){};
-#endif
 
 extern "C" void app_main(void)
 { 
-  // rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  // CPU freq setting not available in ESP-IDF v5.4
   mount_filesystem();                       // mount the filesystem!
-  _emu = NewEmulator();                     // create the emulator!
-  
+  _emu = NewNofrendo(VIDEO_STANDARD);
+
   if (!_emu) {
     printf("Failed to create emulator!\n");
     return;
   }
   
-  int hid_result = hid_init("emu32");       // hid stub initialization
-  if (hid_result != 0) {
-    printf("HID initialization failed: %d\n", hid_result);
-  }
-
-  #ifdef SINGLE_CORE
-  emu_init();
-  video_init(_emu->cc_width, _emu->flavor, _emu->composite_palette(), _emu->standard); // start the A/V pump on app core
-  #else
-  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
-  #endif
+  xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
 
   // Main loop (replaces Arduino loop())
   while(1) {
-    #ifdef SINGLE_CORE
-    emu_loop();
-    #else
     // start the video after emu has started
     if (!_inited) {
       if (_lines) {
@@ -238,14 +141,6 @@ extern "C" void app_main(void)
         vTaskDelay(1);
       }
     }
-    #endif
-    
-    // update the hid stack (stub)
-    hid_update();
-
-    // Dump some stats
-    perf();
-    
     // Small delay to prevent watchdog timeout
     vTaskDelay(1);
   }

@@ -28,6 +28,11 @@ int hid_get(uint8_t* dst, int dst_len) {
     return 0;
 }
 
+int get_hid_ir(uint8_t* dst) {
+    // No IR input for stub
+    return 0;
+}
+
 // gui_msg is implemented in gui.cpp
 
 // Stub wii state structures

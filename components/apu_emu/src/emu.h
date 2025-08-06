@@ -147,8 +147,11 @@ extern "C" FILE* mkfile(const char* path);
 extern "C" int unpack(const char* dst_path, const uint8_t* d, int len);
 
 void audio_write_16(const int16_t* s, int len, int channels);
-int get_hid_ir(uint8_t* dst);
 uint32_t generic_map(uint32_t m, const uint32_t* target);
+
+extern "C" {
+int get_hid_ir(uint8_t* dst);
+}
 
 Emu* NewAtari800(int ntsc = 1);
 Emu* NewNofrendo(int ntsc = 1);

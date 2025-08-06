@@ -22,6 +22,10 @@ using namespace std;
 // Handly for NES/SMS carts
 // Uses app1 as a cache with a crappy FS on top - default arduino config gives 1280k
 
+#ifndef ESP_PLATFORM
+#define ESP_PLATFORM
+#endif
+
 #ifdef ESP_PLATFORM
 #include <spi_flash_mmap.h>
 #include <esp_attr.h>
