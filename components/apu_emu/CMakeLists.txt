@@ -2,9 +2,6 @@ idf_component_register(
     SRCS "src/emu.cpp" 
          "src/emu_nofrendo.cpp" 
          "src/gui.cpp"
-         "src/hid_server/hci_server.cpp"
-         "src/hid_server/hci_transport_esp32.cpp" 
-         "src/hid_server/hid_server.cpp"
          "src/nofrendo/bitmap.c"
          "src/nofrendo/config.c"
          "src/nofrendo/event.c"
@@ -69,12 +66,26 @@ idf_component_register(
          "src/nofrendo/osd.c"
          "src/nofrendo/vid_drv.c"
          "src/nofrendo/vrcvisnd.c"
-    INCLUDE_DIRS "src" "src/nofrendo" "src/hid_server"
-    PRIV_REQUIRES bt driver spiffs esp32-camera esp_adc
+    INCLUDE_DIRS 
+        "src"
+        "src/nofrendo"
+    REQUIRES 
+        "spiffs" 
+        "driver" 
+        "esp_partition"
+        "esp_timer"
+        "freertos"
+        "esp_system"
+        "soc"
+        "esp_hw_support"
+        "spi_flash"
 )
 
-target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    -DNOFCONFIG_H
-    -DNES_SMALL_STACK
-    -DESPWIFI
+# target_compile_definitions(${COMPONENT_LIB} PRIVATE
+#     -DNOFCONFIG_H
+#     -DNES_SMALL_STACK
+#     -DESPWIFI
+# )
+target_compile_options(__idf_apu_emu PRIVATE 
+    -w  # Disable all warnings
 )

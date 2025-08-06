@@ -357,16 +357,6 @@ public:
                 OVERLAY_HEIGHT = 20;
                 set_colors(0x39,0x09);  // nes
                 break;
-            case EMU_ATARI:
-                OVERLAY_WIDTH = 34;
-                OVERLAY_HEIGHT = 22;
-                set_colors(0xCE,0xC2);  // atari
-                break;
-            case EMU_SMS:
-                OVERLAY_WIDTH = 28;
-                OVERLAY_HEIGHT = 20;
-                set_colors(7<<2,1<<3);  // sms - 332 rgb
-                break;
         }
 
         _buf = new uint8_t[OVERLAY_WIDTH*OVERLAY_HEIGHT];
