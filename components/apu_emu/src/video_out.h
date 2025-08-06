@@ -21,9 +21,11 @@
 
 int _pal_ = 0;
 
+#define _USE_MATH_DEFINES
 #include "esp_types.h"
 #include "esp_heap_caps.h"
 #include <algorithm>
+#include <cmath>
 #include "esp_attr.h"
 #include "esp_intr_alloc.h"
 #include "esp_err.h"
@@ -91,7 +93,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     for (int i = 0; i < 2; i++) {
         int n = line_width*2*ch;
         if (n >= 4092) {
-            printf("DMA chunk too big:%s\n",n);
+            printf("DMA chunk too big:%d\n",n);
             return -1;
         }
         _dma_desc[i].buf = (uint8_t*)heap_caps_calloc(1, n, MALLOC_CAP_DMA);
@@ -230,7 +232,7 @@ void* MALLOC32(int x, const char* label)
         esp_restart();
     }
     else
-        printf("MALLOC32 allocation of %s:%d %08X\n",label,x,r);
+        printf("MALLOC32 allocation of %s:%d %p\n",label,x,r);
     return r;
 }
 
