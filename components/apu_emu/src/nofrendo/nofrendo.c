@@ -24,6 +24,7 @@
 ** $Id: nofrendo.c,v 1.3 2001/04/27 14:37:11 neil Exp $
 */
 
+#define _GNU_SOURCE  // Enable strdup and other GNU extensions
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
