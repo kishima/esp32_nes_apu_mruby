@@ -44,4 +44,16 @@ uint32_t wii_map(int index, const uint32_t* common, const uint32_t* classic) {
     return 0; // No input for stub
 }
 
+// System preferences stubs
+int sys_get_pref(const char* key, char* value, int max_len) {
+    if (value && max_len > 0) {
+        value[0] = 0;  // Empty string
+    }
+    return 0;
+}
+
+void sys_set_pref(const char* key, const char* value) {
+    printf("Setting preference (stubbed): %s = %s\n", key, value);
+}
+
 } // extern "C"

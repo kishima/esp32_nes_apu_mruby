@@ -17,6 +17,28 @@
 
 #include "emu.h"
 
+extern "C" {
+// HID stub function declarations
+int hid_get(uint8_t* dst, int dst_len);
+int sys_get_pref(const char* key, char* value, int max_len);
+void sys_set_pref(const char* key, const char* value);
+
+// Wii state structures and constants (stubs)
+typedef struct {
+    uint32_t flags;
+    uint8_t report[32];
+    uint16_t common() { return 0; }
+    uint16_t classic() { return 0; }
+} wii_state;
+extern wii_state wii_states[4];
+
+// Wii button constants (stubs)
+enum {
+    wii_plus = 0x1000, wii_up = 0x0800, wii_down = 0x0400, wii_right = 0x0200, wii_left = 0x0100,
+    wii_home = 0x0080, wii_minus = 0x0010, wii_a = 0x0008, wii_b = 0x0004, wii_one = 0x0002, wii_two = 0x0001
+};
+}
+
 using namespace std;
 
 string get_ext(const string& s)

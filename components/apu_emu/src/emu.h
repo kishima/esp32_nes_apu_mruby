@@ -28,7 +28,6 @@
 #include <vector>
 #include <map>
 
-#include "hid_server/hid_server.h"
 
 #define EMU_ATARI 1
 #define EMU_NES 2

@@ -22,6 +22,7 @@
 extern "C" {
 #include "nofrendo/osd.h"
 #include "nofrendo/event.h"
+uint32_t wii_map(int index, const uint32_t* common, const uint32_t* classic);
 };
 #include "math.h"
 

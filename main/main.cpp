@@ -24,6 +24,12 @@
 #include <algorithm>
 #include "soc/rtc.h"
 
+extern "C" {
+// HID stub function declarations
+int hid_init(const char* local_name);
+int hid_update();
+}
+
 #define PERF  // some stats about where we spend our time
 #include "emu.h"
 // Temporarily disable video_out.h to focus on APU functionality
@@ -205,7 +211,7 @@ extern "C" void app_main(void)
     return;
   }
   
-  int hid_result = hid_init("emu32");       // bluetooth hid on core 1!
+  int hid_result = hid_init("emu32");       // hid stub initialization
   if (hid_result != 0) {
     printf("HID initialization failed: %d\n", hid_result);
   }
@@ -234,7 +240,7 @@ extern "C" void app_main(void)
     }
     #endif
     
-    // update the bluetooth edr/hid stack
+    // update the hid stack (stub)
     hid_update();
 
     // Dump some stats
