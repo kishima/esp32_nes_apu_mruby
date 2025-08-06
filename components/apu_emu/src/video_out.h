@@ -21,9 +21,9 @@
 
 int _pal_ = 0;
 
-#ifdef ESP_PLATFORM
 #include "esp_types.h"
 #include "esp_heap_caps.h"
+#include <algorithm>
 #include "esp_attr.h"
 #include "esp_intr_alloc.h"
 #include "esp_err.h"
@@ -42,9 +42,9 @@ int _pal_ = 0;
 #include "driver/gpio.h"
 #include "driver/i2s.h"
 
-#ifdef IR_PIN
-#include "ir_input.h"  // ir peripherals
-#endif
+// #ifdef IR_PIN
+// #include "ir_input.h"  // ir peripherals
+// #endif
 
 
 //====================================================================================================
@@ -233,36 +233,6 @@ void* MALLOC32(int x, const char* label)
         printf("MALLOC32 allocation of %s:%d %08X\n",label,x,r);
     return r;
 }
-
-#else
-
-//====================================================================================================
-//====================================================================================================
-//  Simulator
-//
-
-#define IRAM_ATTR
-#define DRAM_ATTR
-
-void video_init_hw(int line_width, int samples_per_cc);
-
-uint32_t xthal_get_ccount() {
-    unsigned int lo,hi;
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-    return lo;
-    //return ((uint64_t)hi << 32) | lo;
-}
-
-void audio_sample(uint8_t s);
-
-void ir_sample();
-
-int get_hid_ir(uint8_t* buf)
-{
-    return 0;
-}
-
-#endif
 
 //====================================================================================================
 //====================================================================================================
@@ -531,7 +501,7 @@ void IRAM_ATTR burst_pal(uint16_t* line)
 
 #ifdef PERF
 #define BEGIN_TIMING()  uint32_t t = cpu_ticks()
-#define END_TIMING() t = cpu_ticks() - t; _blit_ticks_min = min(_blit_ticks_min,t); _blit_ticks_max = max(_blit_ticks_max,t);
+#define END_TIMING() t = cpu_ticks() - t; _blit_ticks_min = std::min(_blit_ticks_min,t); _blit_ticks_max = std::max(_blit_ticks_max,t);
 #define ISR_BEGIN() uint32_t t = cpu_ticks()
 #define ISR_END() t = cpu_ticks() - t;_isr_us += (t+120)/240;
 uint32_t _blit_ticks_min = 0;

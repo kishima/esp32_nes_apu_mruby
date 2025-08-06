@@ -24,10 +24,9 @@
 #include <algorithm>
 #include "soc/rtc.h"
 
+#define PERF  // some stats about where we spend our time
 #include "emu.h"
 #include "video_out.h"
-
-#define PERF  // some stats about where we spend our time
 
 // esp_8_bit
 //  Choose one of the video standards: PAL,NTSC
@@ -110,7 +109,7 @@ void setup()
   //rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
-  hid_init("emu32");                        // bluetooth hid on core 1!
+  hid_init();                        // bluetooth hid on core 1!
 
   xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
 }
@@ -123,7 +122,7 @@ void perf()
     float elapsed_us = 120*1000000/(_emu->standard ? 60 : 50);
     _next = _drawn + 120;
     
-    printf("frame_time:%d drawn:%d displayed:%d blit_ticks:%d->%d, isr time:%2.2f%%\n",
+    printf("frame_time:%lu drawn:%lu displayed:%d blit_ticks:%lu->%lu, isr time:%2.2f%%\n",
       _frame_time/240,_drawn,_frame_counter,_blit_ticks_min,_blit_ticks_max,(_isr_us*100)/elapsed_us);
       
     _blit_ticks_min = 0xFFFFFFFF;

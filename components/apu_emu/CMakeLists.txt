@@ -89,4 +89,5 @@ idf_component_register(
 # )
 target_compile_options(__idf_apu_emu PRIVATE 
     -w  # Disable all warnings
+    -Wno-error  # Don't treat warnings as errors
 )

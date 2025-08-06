@@ -912,7 +912,7 @@ public:
     {
         read_directory(path);
         if (_files.empty()) {
-            _emu->make_default_media(_path);
+            //_emu->make_default_media(_path);
             read_directory(path);
         }
 

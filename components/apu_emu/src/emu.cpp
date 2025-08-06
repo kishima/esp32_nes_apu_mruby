@@ -235,47 +235,47 @@ uint32_t generic_map(uint32_t bits, const uint32_t* m)
 // unpack file and write to FS, use rom miniz on esp32
 // uses quite a lot of memory, call before initializing screen on atari
 // could actually use the screen mem (which might look cool) or the main cpu mem for buffer
-int unpack(const char* dst, const uint8_t* d, int len)
-{
-    printf("unpacking %s\n",dst);
-    FILE* f = mkfile(dst);
-    if (!f)
-        return -1;
+// int unpack(const char* dst, const uint8_t* d, int len)
+// {
+//     printf("unpacking %s\n",dst);
+//     FILE* f = mkfile(dst);
+//     if (!f)
+//         return -1;
 
-    #define BUF_SIZE 0x8000
-    uint8_t* buf = new uint8_t[BUF_SIZE];
-    if (!buf) {
-        fclose(f);
-        return -1;  // could use a smaller window on compression but would not generalize to other people's zips
-    }
+//     #define BUF_SIZE 0x8000
+//     uint8_t* buf = new uint8_t[BUF_SIZE];
+//     if (!buf) {
+//         fclose(f);
+//         return -1;  // could use a smaller window on compression but would not generalize to other people's zips
+//     }
 
-    tinfl_decompressor* dec = new tinfl_decompressor;   // largist
-    size_t in_bytes, out_bytes;
-    tinfl_status status;
-    int i = 0;
+//     tinfl_decompressor* dec = new tinfl_decompressor;   // largist
+//     size_t in_bytes, out_bytes;
+//     tinfl_status status;
+//     int i = 0;
 
-    tinfl_init(dec);
-    while (i < len) {
-        in_bytes = len-i;
-        out_bytes = BUF_SIZE;
-        status = tinfl_decompress(dec,d+i,&in_bytes,buf,buf,&out_bytes,11);
-        if (out_bytes != fwrite(buf,1,out_bytes,f)) {
-            status = TINFL_STATUS_FAILED;
-            break;
-        }
-        i += in_bytes;
-    }
+//     tinfl_init(dec);
+//     while (i < len) {
+//         in_bytes = len-i;
+//         out_bytes = BUF_SIZE;
+//         status = tinfl_decompress(dec,d+i,&in_bytes,buf,buf,&out_bytes,11);
+//         if (out_bytes != fwrite(buf,1,out_bytes,f)) {
+//             status = TINFL_STATUS_FAILED;
+//             break;
+//         }
+//         i += in_bytes;
+//     }
 
-    delete [] buf;
-    delete dec;
-    fclose(f);
+//     delete [] buf;
+//     delete dec;
+//     fclose(f);
 
-    if (status == TINFL_STATUS_FAILED) {
-        remove(dst);
-        return -1;
-    }
-    return 0;
-}
+//     if (status == TINFL_STATUS_FAILED) {
+//         remove(dst);
+//         return -1;
+//     }
+//     return 0;
+// }
 
 Emu::Emu(const char* n,int w,int h, int st, int aformat, int cc, int f) :
     name(n),width(w),height(h),standard(st),audio_format(aformat),cc_width(cc),flavor(f)
