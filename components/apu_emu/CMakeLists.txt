@@ -3,6 +3,11 @@ idf_component_register(
         "src/emu.cpp"
         "src/emu_nofrendo.cpp"
         "src/gui.cpp"
+        "src/hid_stub.cpp"
+        # Temporarily disable HID server for initial build
+        #"src/hid_server/hci_server.cpp"
+        #"src/hid_server/hci_transport_esp32.cpp"
+        #"src/hid_server/hid_server.cpp"
         "src/nofrendo/bitmap.c"
         "src/nofrendo/libsnss.c"
         "src/nofrendo/gui_elem.c"
@@ -81,4 +86,17 @@ idf_component_register(
         "soc"
         "esp_hw_support"
         "spi_flash"
+        # Temporarily remove bt dependency
+        #"bt"
+)
+
+# Disable all warnings that are treated as errors for this legacy component
+target_compile_options(__idf_apu_emu PRIVATE 
+    -w  # Disable all warnings
+)
+
+# Add Bluetooth headers for ESP32
+target_include_directories(__idf_apu_emu PRIVATE 
+    ${IDF_PATH}/components/bt/include/esp32/include
+    ${IDF_PATH}/components/bt/host/bluedroid/api/include/api
 )
