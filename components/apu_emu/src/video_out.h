@@ -31,6 +31,7 @@ int _pal_ = 0;
 #include "esp_err.h"
 #include "soc/gpio_reg.h"
 #include "soc/rtc.h"
+#include "hal/clk_tree_hal.h"
 #include "soc/soc.h"
 #include "soc/i2s_struct.h"
 #include "soc/i2s_reg.h"
@@ -133,11 +134,30 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     // Configure APLL frequency using direct register access for precise timing
     // Note: In ESP-IDF v5.4, detailed APLL configuration needs to be done via rtc_clk_apll_coeff_set
     if (!_pal_) {
-        // NTSC timing configuration would go here
+        // NTSC timing configuration - precise APLL setup for video colorburst
         // Target frequencies: 3x = 10.7386MHz, 4x = 14.3182MHz
+        switch (samples_per_cc) {
+            case 3: 
+                // 10.7386363636 3x NTSC (10.7386398315mhz)
+                // ESP-IDF v5.4: Configure APLL coefficients directly
+                rtc_clk_apll_coeff_set(0x46, 0x97, 0x4, 2);
+                break;    
+            case 4: 
+                // 14.3181818182 4x NTSC (14.3181864421mhz) 
+                // ESP-IDF v5.4: Configure APLL coefficients directly
+                rtc_clk_apll_coeff_set(0x46, 0x97, 0x4, 1);
+                break;    
+        }
+        // Original ESP-IDF v4.x API equivalent:
+        // case 3: rtc_clk_apll_enable(1,0x46,0x97,0x4,2);   break;
+        // case 4: rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;
     } else {
-        // PAL timing configuration would go here  
-        // Target frequency: ~17.734MHz for 4x PAL
+        // PAL timing configuration - 17.734476mhz ~4x PAL
+        // ESP-IDF v5.4: Configure APLL coefficients directly
+        rtc_clk_apll_coeff_set(0x04, 0xA4, 0x6, 1);
+        
+        // Original ESP-IDF v4.x API equivalent:
+        // rtc_clk_apll_enable(1,0x04,0xA4,0x6,1);
     }
 
     I2S0.clkm_conf.clkm_div_num = 1;            // I2S clock divider’s integral value.
