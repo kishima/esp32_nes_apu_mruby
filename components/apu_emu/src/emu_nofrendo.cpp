@@ -17,6 +17,12 @@
 
 #include "emu.h"
 #include "media.h"
+#include <stdint.h>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 extern "C" {
 #include "nofrendo/osd.h"
@@ -102,7 +108,68 @@ uint32_t yuv_palette(int r, int g, int b)
     return ((luma & 0xFF00) << 16) | ((ui & 0xF8) << 8) | (vi >> 3); // luma:0:u:v
 }
 
-void make_yuv_palette(const char* name, const uint32_t* pal, int len);
+// copy from emu_atari800.cpp
+// make_yuv_palette from RGB palette
+void make_yuv_palette(const char* name, const uint32_t* rgb, int len)
+{
+    uint32_t pal[256*2];
+    uint32_t* even = pal;
+    uint32_t* odd = pal + len;
+
+    float chroma_scale = BLANKING_LEVEL/2/256;
+    //chroma_scale /= 127;  // looks a little washed out
+    chroma_scale /= 80;
+    for (int i = 0; i < len; i++) {
+        uint8_t r = rgb[i] >> 16;
+        uint8_t g = rgb[i] >> 8;
+        uint8_t b = rgb[i];
+
+        float y = 0.299 * r + 0.587*g + 0.114 * b;
+        float u = -0.147407 * r - 0.289391 * g + 0.436798 * b;
+        float v =  0.614777 * r - 0.514799 * g - 0.099978 * b;
+        y /= 255.0;
+        y = (y*(WHITE_LEVEL-BLACK_LEVEL) + BLACK_LEVEL)/256;
+
+        uint32_t e = 0;
+        uint32_t o = 0;
+        for (int i = 0; i < 4; i++) {
+            float p = 2*M_PI*i/4 + M_PI;
+            float s = sin(p)*chroma_scale;
+            float c = cos(p)*chroma_scale;
+            uint8_t e0 = round(y + (s*u) + (c*v));
+            uint8_t o0 = round(y + (s*u) - (c*v));
+            e = (e << 8) | e0;
+            o = (o << 8) | o0;
+        }
+        *even++ = e;
+        *odd++ = o;
+    }
+
+    printf("uint32_t %s_4_phase_pal[] = {\n",name);
+    for (int i = 0; i < len*2; i++) {  // start with luminance map
+        printf("0x%08X,",pal[i]);
+        if ((i & 7) == 7)
+            printf("\n");
+        if (i == (len-1)) {
+            printf("//odd\n");
+        }
+    }
+    printf("};\n");
+
+    /*
+     // don't bother with phase tables
+    printf("uint8_t DRAM_ATTR %s[] = {\n",name);
+    for (int i = 0; i < len*(1<<PHASE_BITS)*2; i++) {
+        printf("0x%02X,",yuv[i]);
+        if ((i & 15) == 15)
+            printf("\n");
+        if (i == (len*(1<<PHASE_BITS)-1)) {
+            printf("//odd\n");
+        }
+    }
+    printf("};\n");
+     */
+}
 
 extern rgb_t nes_palette[64];
 extern "C" void pal_generate();

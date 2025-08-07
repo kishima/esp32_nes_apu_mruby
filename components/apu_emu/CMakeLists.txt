@@ -94,4 +94,6 @@ target_compile_options(__idf_apu_emu PRIVATE
     -Wno-volatile  # Disable volatile warnings
     -Wno-implicit-fallthrough  # Disable fallthrough warnings
     -Wno-attributes  # Disable attribute warnings
+    -Wno-missing-field-initializers  # Disable struct initializer warnings
+    -Wno-deprecated-declarations  # Disable deprecated API warnings
 )

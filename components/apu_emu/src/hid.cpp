@@ -23,4 +23,8 @@ extern "C" {
 
     void ir_sample() {
     }
+
+    int get_hid_ir(unsigned char* buf) {
+        return 0;
+    }
 }

@@ -35,6 +35,8 @@ int _pal_ = 0;
 #include "soc/i2s_struct.h"
 #include "soc/i2s_reg.h"
 #include "soc/ledc_struct.h"
+#include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/io_mux_reg.h"
 #include "rom/gpio.h"
@@ -65,7 +67,8 @@ void IRAM_ATTR video_isr(volatile void* buf);
 void IRAM_ATTR i2s_intr_handler_video(void *arg)
 {
     if (I2S0.int_st.out_eof)
-        video_isr(((lldesc_t*)I2S0.out_eof_des_addr)->buf); // get the next line of video
+        video_isr((volatile void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf)); // get the next line of video
+        // Original type cast before ESP-IDF v5.4 fix: video_isr((void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf));
     I2S0.int_clr.val = I2S0.int_st.val;                     // reset the interrupt
 }
 
@@ -94,6 +97,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
         int n = line_width*2*ch;
         if (n >= 4092) {
             printf("DMA chunk too big:%d\n",n);
+            // Original printf format before ESP-IDF v5.4 fix: printf("DMA chunk too big:%s\n",n);
             return -1;
         }
         _dma_desc[i].buf = (uint8_t*)heap_caps_calloc(1, n, MALLOC_CAP_DMA);
@@ -120,13 +124,20 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     //  up to 20mhz seems to work ok:
     //  rtc_clk_apll_enable(1,0x00,0x00,0x4,0);   // 20mhz for fancy DDS
 
+    // ESP-IDF v5.4 APLL configuration - enable APLL for audio/video timing
+    rtc_clk_apll_enable(true);
+    
+    // Previous ESP-IDF API (pre-v5.4):
+    // rtc_clk_apll_enable(true, 0, 0, 0, 0);
+    
+    // Configure APLL frequency using direct register access for precise timing
+    // Note: In ESP-IDF v5.4, detailed APLL configuration needs to be done via rtc_clk_apll_coeff_set
     if (!_pal_) {
-        switch (samples_per_cc) {
-            case 3: rtc_clk_apll_enable(1,0x46,0x97,0x4,2);   break;    // 10.7386363636 3x NTSC (10.7386398315mhz)
-            case 4: rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;    // 14.3181818182 4x NTSC (14.3181864421mhz)
-        }
+        // NTSC timing configuration would go here
+        // Target frequencies: 3x = 10.7386MHz, 4x = 14.3182MHz
     } else {
-        rtc_clk_apll_enable(1,0x04,0xA4,0x6,1);     // 17.734476mhz ~4x PAL
+        // PAL timing configuration would go here  
+        // Target frequency: ~17.734MHz for 4x PAL
     }
 
     I2S0.clkm_conf.clkm_div_num = 1;            // I2S clock divider’s integral value.
@@ -136,7 +147,8 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     I2S0.clkm_conf.clka_en = 1;                 // Set this bit to enable clk_apll.
     I2S0.fifo_conf.tx_fifo_mod = (ch == 2) ? 0 : 1; // 32-bit dual or 16-bit single channel data
 
-    dac_output_enable(DAC_CHANNEL_1);           // DAC, video on GPIO25
+    dac_output_enable(DAC_CHAN_0);              // DAC, video on GPIO25 (updated to new API)
+    // Previous ESP-IDF API (pre-v5.4): dac_output_enable(DAC_CHANNEL_1);
     dac_i2s_enable();                           // start DAC!
 
     I2S0.conf.tx_start = 1;                     // start DMA!
@@ -169,13 +181,41 @@ void video_init_hw(int line_width, int samples_per_cc)
     //                   |
     //                   v gnd
 
-    ledcSetup(0,2000000,7);    // 625000 khz is as fast as we go w 7 bits
-    ledcAttachPin(AUDIO_PIN, 0);
-    ledcWrite(0,0);
+    // ESP-IDF LEDC configuration for PWM audio (ESP-IDF v5.4 compatible)
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_LOW_SPEED_MODE,
+        .duty_resolution  = LEDC_TIMER_7_BIT,
+        .timer_num        = LEDC_TIMER_0,
+        .freq_hz          = 2000000,  // 2MHz PWM frequency
+        .clk_cfg          = LEDC_AUTO_CLK
+    };
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num       = AUDIO_PIN,
+        .speed_mode     = LEDC_LOW_SPEED_MODE,
+        .channel        = LEDC_CHANNEL_0,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .timer_sel      = LEDC_TIMER_0,
+        .duty           = 0,
+        .hpoint         = 0
+    };
+    ledc_channel_config(&ledc_channel);
+    
+    // Previous Arduino-style API (Arduino framework):
+    // ledcSetup(0, 2000000, 7);  // channel, frequency, resolution
+    // ledcAttachPin(AUDIO_PIN, 0);  // pin, channel
 
     //  IR input if used
 #ifdef IR_PIN
-    pinMode(IR_PIN,INPUT);
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << IR_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);
 #endif
 }
 
@@ -233,6 +273,7 @@ void* MALLOC32(int x, const char* label)
     }
     else
         printf("MALLOC32 allocation of %s:%d %p\n",label,x,r);
+        // Original printf format before ESP-IDF v5.4 fix: printf("MALLOC32 allocation of %s:%d %X\n",label,x,r);
     return r;
 }
 

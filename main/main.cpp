@@ -103,17 +103,6 @@ esp_err_t mount_filesystem()
   return e;
 }
 
-
-void setup()
-{ 
-  //rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
-  mount_filesystem();                       // mount the filesystem!
-  _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
-  hid_init();                        // bluetooth hid on core 1!
-
-  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
-}
-
 #ifdef PERF
 void perf()
 {
@@ -136,6 +125,13 @@ void perf(){};
 
 extern "C" void app_main(void)
 {    
+  //rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
+  mount_filesystem();                       // mount the filesystem!
+  _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
+  hid_init();                        // bluetooth hid on core 1!
+
+  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
+
   // start the video after emu has started
   if (!_inited) {
     if (_lines) {

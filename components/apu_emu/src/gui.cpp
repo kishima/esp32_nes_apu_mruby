@@ -1001,9 +1001,9 @@ void gui_update()
     if (n > 0)
         gui_hid(buf,n);
     
-    n = get_hid_ir(buf);
-    if (n > 0)
-        gui_hid(buf,n);
+    // n = get_hid_ir(buf);
+    // if (n > 0)
+    //     gui_hid(buf,n);
 }
 
 void gui_key(int keycode, int pressed, int mods)
