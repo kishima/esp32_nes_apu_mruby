@@ -132,19 +132,23 @@ extern "C" void app_main(void)
 
   xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
 
-  // start the video after emu has started
-  if (!_inited) {
-    if (_lines) {
-      printf("video_init\n");
-      video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
-      _inited = true;
-    } else {
+  while(true){
+    // start the video after emu has started
+    if (!_inited) {
+      if (_lines) {
+        printf("video_init\n");
+        video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
+        _inited = true;
+      } else {
+        vTaskDelay(1);
+      }
+    }else{
       vTaskDelay(1);
     }
-  }  
-  // update the bluetooth edr/hid stack
-  //hid_update();
+    // update the bluetooth edr/hid stack
+    hid_update();
 
-  // Dump some stats
-  perf();
+    // Dump some stats
+    perf();
+  }
 }
