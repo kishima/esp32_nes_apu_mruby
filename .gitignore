@@ -4,6 +4,5 @@ build/
 local/
 sdkconfig.old
 sdkconfig
-CLAUDE.md
 components/mruby_component/esp32_build_config.rb.lock
 dependencies.lock
