@@ -21,10 +21,10 @@ extern "C" {
     void sys_set_pref(const char* key, const char* value) {
     }
 
-    void ir_sample() {
-    }
+    // void ir_sample() {
+    // }
 
-    int get_hid_ir(unsigned char* buf) {
-        return 0;
-    }
+    // int get_hid_ir(unsigned char* buf) {
+    //     return 0;
+    // }
 }

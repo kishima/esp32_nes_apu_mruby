@@ -17,7 +17,7 @@
 
 #define VIDEO_PIN   26
 #define AUDIO_PIN   18  // can be any pin
-#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
+//#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
 
 int _pal_ = 0;
 
@@ -227,16 +227,16 @@ void video_init_hw(int line_width, int samples_per_cc)
     // ledcAttachPin(AUDIO_PIN, 0);  // pin, channel
 
     //  IR input if used
-#ifdef IR_PIN
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << IR_PIN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    gpio_config(&io_conf);
-#endif
+// #ifdef IR_PIN
+//     gpio_config_t io_conf = {
+//         .pin_bit_mask = (1ULL << IR_PIN),
+//         .mode = GPIO_MODE_INPUT,
+//         .pull_up_en = GPIO_PULLUP_ENABLE,
+//         .pull_down_en = GPIO_PULLDOWN_DISABLE,
+//         .intr_type = GPIO_INTR_DISABLE
+//     };
+//     gpio_config(&io_conf);
+// #endif
 }
 
 // send an audio sample every scanline (15720hz for ntsc, 15600hz for PAL)
@@ -828,9 +828,9 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
     audio_sample(s);
     //audio_sample(_sin64[_x++ & 0x3F]);
 
-#ifdef IR_PIN
-    ir_sample();
-#endif
+// #ifdef IR_PIN
+//     ir_sample();
+// #endif
 
     int i = _line_counter++;
     uint16_t* buf = (uint16_t*)vbuf;
