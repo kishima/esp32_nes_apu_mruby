@@ -584,15 +584,14 @@ def main
       )
     end
 
-    # If no specific options, show basic info and small disassembly
+    # If no specific options, show full ROM disassembly
     unless options[:hex_dump] || options[:disasm]
-      puts "Use -d for disassembly, -x for hex dump, -h for help"
+      puts "Full ROM Disassembly (use -d for custom range, -x for hex dump, -h for help)"
       puts
       
-      # Show first few instructions as example
+      # Disassemble entire PRG ROM
       if parser.prg_rom
-        puts "Sample disassembly (first 32 bytes):"
-        parser.disassemble_prg_rom(0, 32, 0x8000)
+        parser.disassemble_prg_rom(0, nil, 0x8000)
       end
     end
 
