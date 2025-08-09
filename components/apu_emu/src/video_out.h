@@ -75,6 +75,7 @@ void IRAM_ATTR i2s_intr_handler_video(void *arg)
 
 static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 {
+    printf("start_dma: function entry, line_width=%d, samples_per_cc=%d, ch=%d\n", line_width, samples_per_cc, ch);
     periph_module_enable(PERIPH_I2S0_MODULE);
 
     // setup interrupt
@@ -126,26 +127,46 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     //  rtc_clk_apll_enable(1,0x00,0x00,0x4,0);   // 20mhz for fancy DDS
 
     // ESP-IDF v5.4 APLL configuration - enable APLL for audio/video timing
+    printf("start_dma: enabling APLL\n");
     rtc_clk_apll_enable(true);
+    printf("start_dma: APLL enabled\n");
     
     // Previous ESP-IDF API (pre-v5.4):
     // rtc_clk_apll_enable(true, 0, 0, 0, 0);
     
     // Configure APLL frequency using direct register access for precise timing
     // Note: In ESP-IDF v5.4, detailed APLL configuration needs to be done via rtc_clk_apll_coeff_set
+    printf("start_dma: configuring APLL, _pal_=%d\n", _pal_);
     if (!_pal_) {
         // NTSC timing configuration - precise APLL setup for video colorburst
         // Target frequencies: 3x = 10.7386MHz, 4x = 14.3182MHz
+        printf("start_dma: NTSC mode, samples_per_cc=%d\n", samples_per_cc);
         switch (samples_per_cc) {
             case 3: 
                 // 10.7386363636 3x NTSC (10.7386398315mhz)
                 // ESP-IDF v5.4: Configure APLL coefficients directly
+                printf("start_dma: setting APLL coeff for case 3\n");
                 rtc_clk_apll_coeff_set(0x46, 0x97, 0x4, 2);
+                printf("start_dma: APLL coeff set completed for case 3\n");
                 break;    
             case 4: 
                 // 14.3181818182 4x NTSC (14.3181864421mhz) 
                 // ESP-IDF v5.4: Configure APLL coefficients directly
-                rtc_clk_apll_coeff_set(0x46, 0x97, 0x4, 1);
+                //https://github.com/Roger-random/ESP_8_BIT_composite/issues/50
+                printf("start_dma: setting APLL coeff for case 4\n");
+                #if 0
+                // Skip APLL configuration for now - use default clock instead
+                printf("start_dma: skipping APLL coeff for debugging\n");
+                #else
+                printf("start_dma: set APLL parmas\n");
+                // OLD API
+                // void rtc_clk_apll_enable(bool enable, uint32_t sdm0, uint32_t sdm1, uint32_t sdm2, uint32_t o_div)
+                // rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;
+                // NEW API
+                // rtc_clk_apll_coeff_set(uint32_t o_div, uint32_t sdm0, uint32_t sdm1, uint32_t sdm2)
+                rtc_clk_apll_coeff_set(1, 0x46, 0x97, 0x4);
+                #endif
+                printf("start_dma: APLL coeff set completed for case 4\n");
                 break;    
         }
         // Original ESP-IDF v4.x API equivalent:
@@ -180,8 +201,11 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 
 void video_init_hw(int line_width, int samples_per_cc)
 {
+    printf("video_init_hw: line_width=%d, samples_per_cc=%d\n", line_width, samples_per_cc);
     // setup apll 4x NTSC or PAL colorburst rate
+    printf("video_init_hw: calling start_dma\n");
     start_dma(line_width,samples_per_cc,1);
+    printf("video_init_hw: start_dma completed\n");
 
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
     // But when using the APLL there appears to be some clock domain conflict that causes

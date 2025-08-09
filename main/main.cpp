@@ -139,6 +139,7 @@ extern "C" void app_main(void)
         printf("video_init\n");
         video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
         _inited = true;
+        printf("video_init done\n");
       } else {
         vTaskDelay(1);
       }
