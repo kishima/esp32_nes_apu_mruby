@@ -227,17 +227,18 @@ void video_init_hw(int line_width, int samples_per_cc)
 
     // ESP-IDF LEDC configuration for PWM audio (ESP-IDF v5.4 compatible)
     ledc_timer_config_t ledc_timer = {
-        .speed_mode       = LEDC_LOW_SPEED_MODE,
+        .speed_mode       = LEDC_HIGH_SPEED_MODE,
         .duty_resolution  = LEDC_TIMER_7_BIT,
         .timer_num        = LEDC_TIMER_0,
-        .freq_hz          = 2000000,  // 2MHz PWM frequency
-        .clk_cfg          = LEDC_AUTO_CLK
+        //.freq_hz          = 2000000,  // 2MHz PWM frequency
+        .freq_hz          = 625000,  // 625KHz PWM frequency // 625 khz is as fast as we go with 7 bitss
+        .clk_cfg          = LEDC_USE_APB_CLK
     };
     ledc_timer_config(&ledc_timer);
 
     ledc_channel_config_t ledc_channel = {
         .gpio_num       = AUDIO_PIN,
-        .speed_mode     = LEDC_LOW_SPEED_MODE,
+        .speed_mode     = LEDC_HIGH_SPEED_MODE,
         .channel        = LEDC_CHANNEL_0,
         .intr_type      = LEDC_INTR_DISABLE,
         .timer_sel      = LEDC_TIMER_0,
@@ -247,7 +248,7 @@ void video_init_hw(int line_width, int samples_per_cc)
     ledc_channel_config(&ledc_channel);
     
     // Previous Arduino-style API (Arduino framework):
-    // ledcSetup(0, 2000000, 7);  // channel, frequency, resolution
+    // ledcSetup(0, 2000000, 7);  // channel, frequency, resolution // 625000 khz is as fast as we go w 7 bitss
     // ledcAttachPin(AUDIO_PIN, 0);  // pin, channel
 
     //  IR input if used
