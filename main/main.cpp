@@ -147,6 +147,25 @@ extern "C" void app_main(void)
 
     // update the bluetooth edr/hid stack
     hid_update(); // do nothing
+    
+    // 擬似的にキー入力を与える（テスト用）- 実時間ベース
+    static uint32_t last_key_time = 0;
+    static bool key_pressed = false;
+    uint32_t current_time = esp_timer_get_time() / 1000; // ミリ秒単位
+    
+    if (current_time - last_key_time >= 2000) {  // 2秒間隔
+        if (!key_pressed) {
+            _emu->key(40, 1, 0);  // Startボタン（Return）押下
+            printf("Simulated Start button press at %ld ms\n", current_time);
+            key_pressed = true;
+        } else {
+            _emu->key(40, 0, 0);  // Startボタン離す
+            printf("Simulated Start button release at %ld ms\n", current_time);
+            key_pressed = false;
+        }
+        last_key_time = current_time;
+    }
+    
     vTaskDelay(1);
 
     // Dump some stats
