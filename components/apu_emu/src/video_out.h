@@ -247,9 +247,13 @@ void video_init_hw(int line_width, int samples_per_cc)
     };
     ledc_channel_config(&ledc_channel);
     
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+
     // Previous Arduino-style API (Arduino framework):
     // ledcSetup(0, 2000000, 7);  // channel, frequency, resolution // 625000 khz is as fast as we go w 7 bitss
     // ledcAttachPin(AUDIO_PIN, 0);  // pin, channel
+    // ledcWrite(0,0);
 
     //  IR input if used
 // #ifdef IR_PIN
