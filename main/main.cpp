@@ -142,11 +142,11 @@ extern "C" void app_main(void)
       } else {
         vTaskDelay(1);
       }
-    }else{
-      vTaskDelay(1);
     }
+
     // update the bluetooth edr/hid stack
-    hid_update();
+    hid_update(); // do nothing
+    vTaskDelay(1);
 
     // Dump some stats
     perf();

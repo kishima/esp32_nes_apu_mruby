@@ -16,9 +16,12 @@
 */
 
 #include "emu.h"
-#include "media.h"
+// #include "media.h"  // Disable embedded ROM data
 #include <stdint.h>
 #include <cmath>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -487,27 +490,72 @@ public:
         }
     }
 
+    // Load ROM data from SPIFFS
+    uint8_t* load_rom_from_spiffs(const char* filename, int* size) {
+        FILE* file = fopen(filename, "rb");
+        if (!file) {
+            printf("Failed to open ROM file: %s\n", filename);
+            return nullptr;
+        }
+
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        *size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        // Allocate memory and read file
+        uint8_t* rom_data = (uint8_t*)malloc(*size);
+        if (!rom_data) {
+            printf("Failed to allocate memory for ROM\n");
+            fclose(file);
+            return nullptr;
+        }
+
+        size_t read_bytes = fread(rom_data, 1, *size, file);
+        fclose(file);
+
+        if (read_bytes != *size) {
+            printf("Failed to read complete ROM file\n");
+            free(rom_data);
+            return nullptr;
+        }
+
+        printf("Loaded ROM %s: %d bytes\n", filename, *size);
+        return rom_data;
+    }
+
     virtual int insert(const std::string& path, int flags, int disk_index)
     {
-        unmap_file(_nofrendo_rom);
-        _nofrendo_rom = 0;
-        printf("nofrendo inserting %s\n",path.c_str());
+        // unmap_file(_nofrendo_rom);
+        // _nofrendo_rom = 0;
+        // printf("nofrendo inserting %s\n",path.c_str());
 
-        uint8_t h[16];
-        int len = head(path,h,sizeof(h));
-        if (len < 0) {
-            printf("nofrendo can't open %s\n",path.c_str());
-            return -1;
+        // uint8_t h[16];
+        // int len = head(path,h,sizeof(h));
+        // if (len < 0) {
+        //     printf("nofrendo can't open %s\n",path.c_str());
+        //     return -1;
+
+        // Free previous ROM data
+        if (_nofrendo_rom) {
+            free(_nofrendo_rom);
+            _nofrendo_rom = nullptr;
         }
+        
+        printf("nofrendo inserting ROM from SPIFFS: %s\n", path.c_str());
 
-        printf("nofrendo %s is %d bytes\n",path.c_str(),len);
-        _nofrendo_rom = map_file(path.c_str(),len);
+        // Load ROM from SPIFFS
+        int rom_size;
+        _nofrendo_rom = load_rom_from_spiffs(path.c_str(), &rom_size);
         if (!_nofrendo_rom) {
-            printf("nofrendo can't map %s\n",path.c_str());
+            printf("nofrendo can't load ROM from SPIFFS: %s\n", path.c_str());
             return -1;
         }
 
-        nes_emulate_init(path.c_str(),width,height);
+        printf("nofrendo loaded ROM %s: %d bytes\n", path.c_str(), rom_size);
+
+        // Initialize NES emulation with ROM data
+        nes_emulate_init(path.c_str(), width, height);
         _lines = nes_emulate_frame(true);   // first frame!
         return 0;
     }
