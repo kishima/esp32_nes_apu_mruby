@@ -526,16 +526,6 @@ public:
 
     virtual int insert(const std::string& path, int flags, int disk_index)
     {
-        // unmap_file(_nofrendo_rom);
-        // _nofrendo_rom = 0;
-        // printf("nofrendo inserting %s\n",path.c_str());
-
-        // uint8_t h[16];
-        // int len = head(path,h,sizeof(h));
-        // if (len < 0) {
-        //     printf("nofrendo can't open %s\n",path.c_str());
-        //     return -1;
-
         // Free previous ROM data
         if (_nofrendo_rom) {
             free(_nofrendo_rom);

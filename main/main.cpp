@@ -32,7 +32,7 @@
 //  Choose one of the video standards: PAL,NTSC
 #define VIDEO_STANDARD NTSC
 
-Emu* _emu = 0;            // emulator running on core 0
+Emu* _emu = 0;
 uint32_t _frame_time = 0;
 uint32_t _drawn = 1;
 bool _inited = false;
@@ -81,8 +81,6 @@ void emu_task(void* arg)
 
     //emu init
     std::string rom_file = "/" + _emu->name + "/chase.nes";
-    //gui_start(_emu,folder.c_str());
-    //insert(const std::string& path, int flags, int disk_index)
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
         printf("Failed to load ROM, suspending emu_task\n");
         vTaskSuspend(NULL);  // Suspend this task to prevent crashes
@@ -96,7 +94,6 @@ void emu_task(void* arg)
       video_sync();
       // Draw a frame, update sound, process hid events
       uint32_t t = xthal_get_ccount();
-      //gui_update();
       update_av();
       _frame_time = xthal_get_ccount() - t;
       _lines = _emu->video_buffer();
@@ -144,13 +141,14 @@ void perf(){};
 
 extern "C" void app_main(void)
 {    
+  printf("app_main on core %d\n", xPortGetCoreID()); 
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
   hid_init();
-  printf("app_main on core %d\n", xPortGetCoreID()); 
 
-  xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 4, NULL, 1); // nofrendo needs 5k word stack, start on core 1
-
+  // create for Emulator task
+  // nofrendo needs 5k word stack, start on core 1
+  xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 4, NULL, 1);
   
   while(true){
     // start the video after emu has started
