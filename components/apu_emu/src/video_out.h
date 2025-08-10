@@ -69,7 +69,6 @@ void IRAM_ATTR i2s_intr_handler_video(void *arg)
 {
     if (I2S0.int_st.out_eof)
         video_isr((volatile void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf)); // get the next line of video
-        // Original type cast before ESP-IDF v5.4 fix: video_isr((void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf));
     I2S0.int_clr.val = I2S0.int_st.val;                     // reset the interrupt
 }
 
@@ -146,7 +145,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
                 // 10.7386363636 3x NTSC (10.7386398315mhz)
                 // ESP-IDF v5.4: Configure APLL coefficients directly
                 printf("start_dma: setting APLL coeff for case 3\n");
-                rtc_clk_apll_coeff_set(0x46, 0x97, 0x4, 2);
+                rtc_clk_apll_coeff_set(2, 0x46, 0x97, 0x4);
                 printf("start_dma: APLL coeff set completed for case 3\n");
                 break;    
             case 4: 
@@ -827,7 +826,6 @@ void IRAM_ATTR test_wave(volatile void* vbuf, int t = 1)
 
 // Wait for blanking before starting drawing
 // avoids tearing in our unsynchonized world
-#ifdef ESP_PLATFORM
 void video_sync()
 {
   if (!_lines)
@@ -842,7 +840,6 @@ void video_sync()
   }
   vTaskDelay(n+1);
 }
-#endif
 
 // Workhorse ISR handles audio and video updates
 extern "C"

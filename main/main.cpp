@@ -61,8 +61,10 @@ void emu_loop()
 // dual core mode runs emulator on comms core
 void emu_task(void* arg)
 {
-    printf("emu_task %s running on core %d\n",
-      _emu->name.c_str(), xPortGetCoreID());
+    uint32_t cpu_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ;
+    printf("emu_task %s running on core %d at %lu MHz\n",
+      _emu->name.c_str(), xPortGetCoreID(), cpu_freq_mhz);
+    printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
     emu_init();
     for (;;)
       emu_loop();
@@ -125,7 +127,6 @@ void perf(){};
 
 extern "C" void app_main(void)
 {    
-  //rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
   hid_init();                        // bluetooth hid on core 1!
