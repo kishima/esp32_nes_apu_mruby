@@ -174,6 +174,13 @@ audio_write_16() → PWM output (GPIO18) → RC filter → Audio out
   - Handles memory management, timing synchronization, and hardware abstraction
   - Processes all NES subsystems: 6502 CPU, PPU graphics, 5-channel APU audio
 
+## Expected performance 
+
+```
+ frame_time:11984 drawn:1681 displayed:1679 blit_ticks:2920->3776, isr 
+  time:27.81%
+```
+
 ## Current State & Known Issues
 
 ### Working Components
