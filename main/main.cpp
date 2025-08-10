@@ -130,9 +130,13 @@ extern "C" void app_main(void)
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
   hid_init();                        // bluetooth hid on core 1!
+  printf("app_main on core %d\n", xPortGetCoreID()); 
 
-  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
+  // xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
 
+  xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 4, NULL, 1); // nofrendo needs 5k word stack, start on core 1
+
+  
   while(true){
     // start the video after emu has started
     if (!_inited) {
