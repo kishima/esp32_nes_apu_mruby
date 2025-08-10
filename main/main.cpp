@@ -31,32 +31,11 @@
 // esp_8_bit
 //  Choose one of the video standards: PAL,NTSC
 #define VIDEO_STANDARD NTSC
-#define EMULATOR EMU_NES
 
 Emu* _emu = 0;            // emulator running on core 0
 uint32_t _frame_time = 0;
 uint32_t _drawn = 1;
 bool _inited = false;
-
-void emu_init()
-{
-    std::string folder = "/" + _emu->name;
-    gui_start(_emu,folder.c_str());
-    _drawn = _frame_counter;
-}
-
-void emu_loop()
-{
-    // wait for blanking before drawing to avoid tearing
-    video_sync();
-
-    // Draw a frame, update sound, process hid events
-    uint32_t t = xthal_get_ccount();
-    gui_update();
-    _frame_time = xthal_get_ccount() - t;
-    _lines = _emu->video_buffer();
-    _drawn++;
-}
 
 // dual core mode runs emulator on comms core
 void emu_task(void* arg)
@@ -65,28 +44,25 @@ void emu_task(void* arg)
     printf("emu_task %s running on core %d at %lu MHz\n",
       _emu->name.c_str(), xPortGetCoreID(), cpu_freq_mhz);
     printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
-    emu_init();
-    for (;;)
-      emu_loop();
+
+    //emu init
+    std::string folder = "/" + _emu->name;
+    gui_start(_emu,folder.c_str());
+    _drawn = _frame_counter;
+
+    while(true) //emu loop
+    {
+      // wait for blanking before drawing to avoid tearing
+      video_sync();
+      // Draw a frame, update sound, process hid events
+      uint32_t t = xthal_get_ccount();
+      gui_update();
+      _frame_time = xthal_get_ccount() - t;
+      _lines = _emu->video_buffer();
+      _drawn++;
+    }
 }
 
-// esp_err_t mount_filesystem()
-// {
-//   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
-//   uint32_t t = millis();
-//   esp_vfs_spiffs_conf_t conf = {
-//     .base_path = "",
-//     .partition_label = NULL,
-//     .max_files = 5,
-//     .format_if_mount_failed = true  // force?
-//   };
-//   esp_err_t e = esp_vfs_spiffs_register(&conf);
-//   if (e != 0)
-//     printf("Failed to mount or format filesystem: %d. Use 'ESP32 Sketch Data Upload' from 'Tools' menu\n",e);
-//   vTaskDelay(1);
-//   printf("... mounted in %d ms\n",millis()-t);
-//   return e;
-// }
 esp_err_t mount_filesystem()
 {
   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
@@ -129,10 +105,8 @@ extern "C" void app_main(void)
 {    
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
-  hid_init();                        // bluetooth hid on core 1!
+  hid_init();
   printf("app_main on core %d\n", xPortGetCoreID()); 
-
-  // xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
 
   xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 4, NULL, 1); // nofrendo needs 5k word stack, start on core 1
 
