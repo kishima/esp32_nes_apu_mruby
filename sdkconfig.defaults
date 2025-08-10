@@ -29,3 +29,41 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 
 # Bluetooth Configuration - Disabled for APU-only build
 CONFIG_BT_ENABLED=n
+
+# Arduino-compatible performance settings
+# FreeRTOS optimizations matching Arduino
+CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=1024
+CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
+
+# SPI driver optimizations for real-time performance
+CONFIG_SPI_MASTER_ISR_IN_IRAM=y
+CONFIG_SPI_SLAVE_ISR_IN_IRAM=y
+
+# Memory management for emulation performance
+CONFIG_MAIN_TASK_STACK_SIZE=4096
+CONFIG_TIMER_TASK_STACK_SIZE=4096
+CONFIG_ESP32_PTHREAD_TASK_STACK_SIZE_DEFAULT=2048
+
+# Enable C++ exceptions for compatibility (if needed by emu core)
+CONFIG_COMPILER_CXX_EXCEPTIONS=n
+
+# Light heap poisoning for debugging without major perf hit
+CONFIG_HEAP_POISONING_LIGHT=y
+
+# Task watchdog optimized for real-time emulation
+CONFIG_TASK_WDT=y
+CONFIG_TASK_WDT_PANIC=y
+CONFIG_TASK_WDT_TIMEOUT_S=5
+CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+
+# Interrupt watchdog settings matching Arduino
+CONFIG_INT_WDT=y
+CONFIG_INT_WDT_TIMEOUT_MS=300
+CONFIG_INT_WDT_CHECK_CPU1=y
+
+# Enable PSRAM support (commented out but available for future use)
+# CONFIG_SPIRAM_SUPPORT=y
+# CONFIG_SPIRAM_BOOT_INIT=y
+# CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# CONFIG_SPIRAM_SPEED_40M=y
+# CONFIG_SPIRAM_CACHE_WORKAROUND=y
