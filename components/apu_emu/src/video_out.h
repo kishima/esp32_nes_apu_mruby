@@ -17,22 +17,27 @@
 
 #define VIDEO_PIN   26
 #define AUDIO_PIN   18  // can be any pin
-#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
+//#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
 
 int _pal_ = 0;
 
-#ifdef ESP_PLATFORM
+#define _USE_MATH_DEFINES
 #include "esp_types.h"
 #include "esp_heap_caps.h"
+#include <algorithm>
+#include <cmath>
 #include "esp_attr.h"
 #include "esp_intr_alloc.h"
 #include "esp_err.h"
 #include "soc/gpio_reg.h"
 #include "soc/rtc.h"
+#include "hal/clk_tree_hal.h"
 #include "soc/soc.h"
 #include "soc/i2s_struct.h"
 #include "soc/i2s_reg.h"
 #include "soc/ledc_struct.h"
+#include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/io_mux_reg.h"
 #include "rom/gpio.h"
@@ -42,9 +47,9 @@ int _pal_ = 0;
 #include "driver/gpio.h"
 #include "driver/i2s.h"
 
-#ifdef IR_PIN
-#include "ir_input.h"  // ir peripherals
-#endif
+// #ifdef IR_PIN
+// #include "ir_input.h"  // ir peripherals
+// #endif
 
 
 //====================================================================================================
@@ -63,12 +68,13 @@ void IRAM_ATTR video_isr(volatile void* buf);
 void IRAM_ATTR i2s_intr_handler_video(void *arg)
 {
     if (I2S0.int_st.out_eof)
-        video_isr(((lldesc_t*)I2S0.out_eof_des_addr)->buf); // get the next line of video
+        video_isr((volatile void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf)); // get the next line of video
     I2S0.int_clr.val = I2S0.int_st.val;                     // reset the interrupt
 }
 
 static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 {
+    printf("start_dma: function entry, line_width=%d, samples_per_cc=%d, ch=%d\n", line_width, samples_per_cc, ch);
     periph_module_enable(PERIPH_I2S0_MODULE);
 
     // setup interrupt
@@ -91,7 +97,8 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     for (int i = 0; i < 2; i++) {
         int n = line_width*2*ch;
         if (n >= 4092) {
-            printf("DMA chunk too big:%s\n",n);
+            printf("DMA chunk too big:%d\n",n);
+            // Original printf format before ESP-IDF v5.4 fix: printf("DMA chunk too big:%s\n",n);
             return -1;
         }
         _dma_desc[i].buf = (uint8_t*)heap_caps_calloc(1, n, MALLOC_CAP_DMA);
@@ -118,13 +125,59 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     //  up to 20mhz seems to work ok:
     //  rtc_clk_apll_enable(1,0x00,0x00,0x4,0);   // 20mhz for fancy DDS
 
+    // ESP-IDF v5.4 APLL configuration - enable APLL for audio/video timing
+    printf("start_dma: enabling APLL\n");
+    rtc_clk_apll_enable(true);
+    printf("start_dma: APLL enabled\n");
+    
+    // Previous ESP-IDF API (pre-v5.4):
+    // rtc_clk_apll_enable(true, 0, 0, 0, 0);
+    
+    // Configure APLL frequency using direct register access for precise timing
+    // Note: In ESP-IDF v5.4, detailed APLL configuration needs to be done via rtc_clk_apll_coeff_set
+    printf("start_dma: configuring APLL, _pal_=%d\n", _pal_);
     if (!_pal_) {
+        // NTSC timing configuration - precise APLL setup for video colorburst
+        // Target frequencies: 3x = 10.7386MHz, 4x = 14.3182MHz
+        printf("start_dma: NTSC mode, samples_per_cc=%d\n", samples_per_cc);
         switch (samples_per_cc) {
-            case 3: rtc_clk_apll_enable(1,0x46,0x97,0x4,2);   break;    // 10.7386363636 3x NTSC (10.7386398315mhz)
-            case 4: rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;    // 14.3181818182 4x NTSC (14.3181864421mhz)
+            case 3: 
+                // 10.7386363636 3x NTSC (10.7386398315mhz)
+                // ESP-IDF v5.4: Configure APLL coefficients directly
+                printf("start_dma: setting APLL coeff for case 3\n");
+                rtc_clk_apll_coeff_set(2, 0x46, 0x97, 0x4);
+                printf("start_dma: APLL coeff set completed for case 3\n");
+                break;    
+            case 4: 
+                // 14.3181818182 4x NTSC (14.3181864421mhz) 
+                // ESP-IDF v5.4: Configure APLL coefficients directly
+                //https://github.com/Roger-random/ESP_8_BIT_composite/issues/50
+                printf("start_dma: setting APLL coeff for case 4\n");
+                #if 0
+                // Skip APLL configuration for now - use default clock instead
+                printf("start_dma: skipping APLL coeff for debugging\n");
+                #else
+                printf("start_dma: set APLL parmas\n");
+                // OLD API
+                // void rtc_clk_apll_enable(bool enable, uint32_t sdm0, uint32_t sdm1, uint32_t sdm2, uint32_t o_div)
+                // rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;
+                // NEW API
+                // rtc_clk_apll_coeff_set(uint32_t o_div, uint32_t sdm0, uint32_t sdm1, uint32_t sdm2)
+                rtc_clk_apll_coeff_set(1, 0x46, 0x97, 0x4);
+                #endif
+                printf("start_dma: APLL coeff set completed for case 4\n");
+                break;    
         }
+        // Original ESP-IDF v4.x API equivalent:
+        // case 3: rtc_clk_apll_enable(1,0x46,0x97,0x4,2);   break;
+        // case 4: rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;
     } else {
-        rtc_clk_apll_enable(1,0x04,0xA4,0x6,1);     // 17.734476mhz ~4x PAL
+        // PAL timing configuration - 17.734476mhz ~4x PAL
+        // ESP-IDF v5.4: Configure APLL coefficients directly
+        rtc_clk_apll_coeff_set(0x04, 0xA4, 0x6, 1);
+        
+        // Original ESP-IDF v4.x API equivalent:
+        // rtc_clk_apll_enable(1,0x04,0xA4,0x6,1);
     }
 
     I2S0.clkm_conf.clkm_div_num = 1;            // I2S clock divider’s integral value.
@@ -134,7 +187,8 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     I2S0.clkm_conf.clka_en = 1;                 // Set this bit to enable clk_apll.
     I2S0.fifo_conf.tx_fifo_mod = (ch == 2) ? 0 : 1; // 32-bit dual or 16-bit single channel data
 
-    dac_output_enable(DAC_CHANNEL_1);           // DAC, video on GPIO25
+    dac_output_enable(DAC_CHAN_0);              // DAC, video on GPIO25 (updated to new API)
+    // Previous ESP-IDF API (pre-v5.4): dac_output_enable(DAC_CHANNEL_1);
     dac_i2s_enable();                           // start DAC!
 
     I2S0.conf.tx_start = 1;                     // start DMA!
@@ -146,8 +200,11 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 
 void video_init_hw(int line_width, int samples_per_cc)
 {
+    printf("video_init_hw: line_width=%d, samples_per_cc=%d\n", line_width, samples_per_cc);
     // setup apll 4x NTSC or PAL colorburst rate
+    printf("video_init_hw: calling start_dma\n");
     start_dma(line_width,samples_per_cc,1);
+    printf("video_init_hw: start_dma completed\n");
 
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
     // But when using the APLL there appears to be some clock domain conflict that causes
@@ -167,14 +224,47 @@ void video_init_hw(int line_width, int samples_per_cc)
     //                   |
     //                   v gnd
 
-    ledcSetup(0,2000000,7);    // 625000 khz is as fast as we go w 7 bits
-    ledcAttachPin(AUDIO_PIN, 0);
-    ledcWrite(0,0);
+    // ESP-IDF LEDC configuration for PWM audio (ESP-IDF v5.4 compatible)
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_HIGH_SPEED_MODE,
+        .duty_resolution  = LEDC_TIMER_7_BIT,
+        .timer_num        = LEDC_TIMER_0,
+        //.freq_hz          = 2000000,  // 2MHz PWM frequency
+        .freq_hz          = 625000,  // 625KHz PWM frequency // 625 khz is as fast as we go with 7 bitss
+        .clk_cfg          = LEDC_USE_APB_CLK
+    };
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num       = AUDIO_PIN,
+        .speed_mode     = LEDC_HIGH_SPEED_MODE,
+        .channel        = LEDC_CHANNEL_0,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .timer_sel      = LEDC_TIMER_0,
+        .duty           = 0,
+        .hpoint         = 0
+    };
+    ledc_channel_config(&ledc_channel);
+    
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+
+    // Previous Arduino-style API (Arduino framework):
+    // ledcSetup(0, 2000000, 7);  // channel, frequency, resolution // 625000 khz is as fast as we go w 7 bitss
+    // ledcAttachPin(AUDIO_PIN, 0);  // pin, channel
+    // ledcWrite(0,0);
 
     //  IR input if used
-#ifdef IR_PIN
-    pinMode(IR_PIN,INPUT);
-#endif
+// #ifdef IR_PIN
+//     gpio_config_t io_conf = {
+//         .pin_bit_mask = (1ULL << IR_PIN),
+//         .mode = GPIO_MODE_INPUT,
+//         .pull_up_en = GPIO_PULLUP_ENABLE,
+//         .pull_down_en = GPIO_PULLDOWN_DISABLE,
+//         .intr_type = GPIO_INTR_DISABLE
+//     };
+//     gpio_config(&io_conf);
+// #endif
 }
 
 // send an audio sample every scanline (15720hz for ntsc, 15600hz for PAL)
@@ -230,39 +320,10 @@ void* MALLOC32(int x, const char* label)
         esp_restart();
     }
     else
-        printf("MALLOC32 allocation of %s:%d %08X\n",label,x,r);
+        printf("MALLOC32 allocation of %s:%d %p\n",label,x,r);
+        // Original printf format before ESP-IDF v5.4 fix: printf("MALLOC32 allocation of %s:%d %X\n",label,x,r);
     return r;
 }
-
-#else
-
-//====================================================================================================
-//====================================================================================================
-//  Simulator
-//
-
-#define IRAM_ATTR
-#define DRAM_ATTR
-
-void video_init_hw(int line_width, int samples_per_cc);
-
-uint32_t xthal_get_ccount() {
-    unsigned int lo,hi;
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-    return lo;
-    //return ((uint64_t)hi << 32) | lo;
-}
-
-void audio_sample(uint8_t s);
-
-void ir_sample();
-
-int get_hid_ir(uint8_t* buf)
-{
-    return 0;
-}
-
-#endif
 
 //====================================================================================================
 //====================================================================================================
@@ -531,7 +592,7 @@ void IRAM_ATTR burst_pal(uint16_t* line)
 
 #ifdef PERF
 #define BEGIN_TIMING()  uint32_t t = cpu_ticks()
-#define END_TIMING() t = cpu_ticks() - t; _blit_ticks_min = min(_blit_ticks_min,t); _blit_ticks_max = max(_blit_ticks_max,t);
+#define END_TIMING() t = cpu_ticks() - t; _blit_ticks_min = std::min(_blit_ticks_min,t); _blit_ticks_max = std::max(_blit_ticks_max,t);
 #define ISR_BEGIN() uint32_t t = cpu_ticks()
 #define ISR_END() t = cpu_ticks() - t;_isr_us += (t+120)/240;
 uint32_t _blit_ticks_min = 0;
@@ -765,7 +826,6 @@ void IRAM_ATTR test_wave(volatile void* vbuf, int t = 1)
 
 // Wait for blanking before starting drawing
 // avoids tearing in our unsynchonized world
-#ifdef ESP_PLATFORM
 void video_sync()
 {
   if (!_lines)
@@ -780,7 +840,6 @@ void video_sync()
   }
   vTaskDelay(n+1);
 }
-#endif
 
 // Workhorse ISR handles audio and video updates
 extern "C"
@@ -795,9 +854,9 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
     audio_sample(s);
     //audio_sample(_sin64[_x++ & 0x3F]);
 
-#ifdef IR_PIN
-    ir_sample();
-#endif
+// #ifdef IR_PIN
+//     ir_sample();
+// #endif
 
     int i = _line_counter++;
     uint16_t* buf = (uint16_t*)vbuf;

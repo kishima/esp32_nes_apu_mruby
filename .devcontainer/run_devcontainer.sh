@@ -10,4 +10,18 @@ for device in /dev/ttyUSB* /dev/ttyACM*; do
     fi
 done
 
-docker run -it --rm --group-add=dialout --group-add=plugdev --privileged $DEVICE_ARGS --user $(id -u):$(id -g) -v $PWD/..:/project -v /dev/bus/usb:/dev/bus/usb esp32_build_container:v5.4.1 bash
+# If arguments provided, use them as command, otherwise use bash
+if [ $# -gt 0 ]; then
+    CMD="$@"
+else
+    CMD="bash"
+fi
+
+# Set docker flags based on whether we have a TTY
+if tty -s; then
+    DOCKER_FLAGS="-it"
+else
+    DOCKER_FLAGS="-i"
+fi
+
+docker run $DOCKER_FLAGS --rm --group-add=dialout --group-add=plugdev --privileged $DEVICE_ARGS --user $(id -u):$(id -g) -v $PWD/..:/project -w /project/esp32_nes_apu_mruby -v /dev/bus/usb:/dev/bus/usb esp32_build_container:v5.4.1 $CMD

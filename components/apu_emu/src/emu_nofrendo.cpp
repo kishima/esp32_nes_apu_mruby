@@ -16,7 +16,16 @@
 */
 
 #include "emu.h"
-#include "media.h"
+// #include "media.h"  // Disable embedded ROM data
+#include <stdint.h>
+#include <cmath>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 extern "C" {
 #include "nofrendo/osd.h"
@@ -102,7 +111,68 @@ uint32_t yuv_palette(int r, int g, int b)
     return ((luma & 0xFF00) << 16) | ((ui & 0xF8) << 8) | (vi >> 3); // luma:0:u:v
 }
 
-void make_yuv_palette(const char* name, const uint32_t* pal, int len);
+// copy from emu_atari800.cpp
+// make_yuv_palette from RGB palette
+void make_yuv_palette(const char* name, const uint32_t* rgb, int len)
+{
+    uint32_t pal[256*2];
+    uint32_t* even = pal;
+    uint32_t* odd = pal + len;
+
+    float chroma_scale = BLANKING_LEVEL/2/256;
+    //chroma_scale /= 127;  // looks a little washed out
+    chroma_scale /= 80;
+    for (int i = 0; i < len; i++) {
+        uint8_t r = rgb[i] >> 16;
+        uint8_t g = rgb[i] >> 8;
+        uint8_t b = rgb[i];
+
+        float y = 0.299 * r + 0.587*g + 0.114 * b;
+        float u = -0.147407 * r - 0.289391 * g + 0.436798 * b;
+        float v =  0.614777 * r - 0.514799 * g - 0.099978 * b;
+        y /= 255.0;
+        y = (y*(WHITE_LEVEL-BLACK_LEVEL) + BLACK_LEVEL)/256;
+
+        uint32_t e = 0;
+        uint32_t o = 0;
+        for (int i = 0; i < 4; i++) {
+            float p = 2*M_PI*i/4 + M_PI;
+            float s = sin(p)*chroma_scale;
+            float c = cos(p)*chroma_scale;
+            uint8_t e0 = round(y + (s*u) + (c*v));
+            uint8_t o0 = round(y + (s*u) - (c*v));
+            e = (e << 8) | e0;
+            o = (o << 8) | o0;
+        }
+        *even++ = e;
+        *odd++ = o;
+    }
+
+    printf("uint32_t %s_4_phase_pal[] = {\n",name);
+    for (int i = 0; i < len*2; i++) {  // start with luminance map
+        printf("0x%08X,",pal[i]);
+        if ((i & 7) == 7)
+            printf("\n");
+        if (i == (len-1)) {
+            printf("//odd\n");
+        }
+    }
+    printf("};\n");
+
+    /*
+     // don't bother with phase tables
+    printf("uint8_t DRAM_ATTR %s[] = {\n",name);
+    for (int i = 0; i < len*(1<<PHASE_BITS)*2; i++) {
+        printf("0x%02X,",yuv[i]);
+        if ((i & 15) == 15)
+            printf("\n");
+        if (i == (len*(1<<PHASE_BITS)-1)) {
+            printf("//odd\n");
+        }
+    }
+    printf("};\n");
+     */
+}
 
 extern rgb_t nes_palette[64];
 extern "C" void pal_generate();
@@ -361,6 +431,8 @@ public:
     // raw HID data. handle WII/IR mappings
     virtual void hid(const uint8_t* d, int len)
     {
+        return;
+        #if 0 //disable HID
         if (d[0] != 0x32 && d[0] != 0x42)
             return;
         bool ir = *d++ == 0x42;
@@ -385,6 +457,7 @@ public:
                 p >>= 1;
             }
         }
+        #endif
     }
 
     /*
@@ -417,27 +490,72 @@ public:
         }
     }
 
+    // Load ROM data from SPIFFS
+    uint8_t* load_rom_from_spiffs(const char* filename, int* size) {
+        FILE* file = fopen(filename, "rb");
+        if (!file) {
+            printf("Failed to open ROM file: %s\n", filename);
+            return nullptr;
+        }
+
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        *size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        // Allocate memory and read file
+        uint8_t* rom_data = (uint8_t*)malloc(*size);
+        if (!rom_data) {
+            printf("Failed to allocate memory for ROM\n");
+            fclose(file);
+            return nullptr;
+        }
+
+        size_t read_bytes = fread(rom_data, 1, *size, file);
+        fclose(file);
+
+        if (read_bytes != *size) {
+            printf("Failed to read complete ROM file\n");
+            free(rom_data);
+            return nullptr;
+        }
+
+        printf("Loaded ROM %s: %d bytes\n", filename, *size);
+        return rom_data;
+    }
+
     virtual int insert(const std::string& path, int flags, int disk_index)
     {
-        unmap_file(_nofrendo_rom);
-        _nofrendo_rom = 0;
-        printf("nofrendo inserting %s\n",path.c_str());
+        // unmap_file(_nofrendo_rom);
+        // _nofrendo_rom = 0;
+        // printf("nofrendo inserting %s\n",path.c_str());
 
-        uint8_t h[16];
-        int len = head(path,h,sizeof(h));
-        if (len < 0) {
-            printf("nofrendo can't open %s\n",path.c_str());
-            return -1;
+        // uint8_t h[16];
+        // int len = head(path,h,sizeof(h));
+        // if (len < 0) {
+        //     printf("nofrendo can't open %s\n",path.c_str());
+        //     return -1;
+
+        // Free previous ROM data
+        if (_nofrendo_rom) {
+            free(_nofrendo_rom);
+            _nofrendo_rom = nullptr;
         }
+        
+        printf("nofrendo inserting ROM from SPIFFS: %s\n", path.c_str());
 
-        printf("nofrendo %s is %d bytes\n",path.c_str(),len);
-        _nofrendo_rom = map_file(path.c_str(),len);
+        // Load ROM from SPIFFS
+        int rom_size;
+        _nofrendo_rom = load_rom_from_spiffs(path.c_str(), &rom_size);
         if (!_nofrendo_rom) {
-            printf("nofrendo can't map %s\n",path.c_str());
+            printf("nofrendo can't load ROM from SPIFFS: %s\n", path.c_str());
             return -1;
         }
 
-        nes_emulate_init(path.c_str(),width,height);
+        printf("nofrendo loaded ROM %s: %d bytes\n", path.c_str(), rom_size);
+
+        // Initialize NES emulation with ROM data
+        nes_emulate_init(path.c_str(), width, height);
         _lines = nes_emulate_frame(true);   // first frame!
         return 0;
     }
@@ -472,13 +590,13 @@ public:
     virtual const uint32_t* pal_palette() { return _nes_yuv_4_phase_pal; };
     virtual const uint32_t* rgb_palette() { return nes_pal; };
 
-    virtual int make_default_media(const string& path)
-    {
-        unpack((path + "/sokoban.nes").c_str(),sokoban_nes,sizeof(sokoban_nes));
-        unpack((path + "/chase.nes").c_str(),chase_nes,sizeof(chase_nes));
-        unpack((path + "/tokumaru_raycast.nes").c_str(),tokumaru_raycast_nes,sizeof(tokumaru_raycast_nes));
-        return 0;
-    }
+    // virtual int make_default_media(const string& path)
+    // {
+    //     unpack((path + "/sokoban.nes").c_str(),sokoban_nes,sizeof(sokoban_nes));
+    //     unpack((path + "/chase.nes").c_str(),chase_nes,sizeof(chase_nes));
+    //     unpack((path + "/tokumaru_raycast.nes").c_str(),tokumaru_raycast_nes,sizeof(tokumaru_raycast_nes));
+    //     return 0;
+    // }
 };
 
 Emu* NewNofrendo(int ntsc)

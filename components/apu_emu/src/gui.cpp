@@ -357,16 +357,6 @@ public:
                 OVERLAY_HEIGHT = 20;
                 set_colors(0x39,0x09);  // nes
                 break;
-            case EMU_ATARI:
-                OVERLAY_WIDTH = 34;
-                OVERLAY_HEIGHT = 22;
-                set_colors(0xCE,0xC2);  // atari
-                break;
-            case EMU_SMS:
-                OVERLAY_WIDTH = 28;
-                OVERLAY_HEIGHT = 20;
-                set_colors(7<<2,1<<3);  // sms - 332 rgb
-                break;
         }
 
         _buf = new uint8_t[OVERLAY_WIDTH*OVERLAY_HEIGHT];
@@ -922,7 +912,7 @@ public:
     {
         read_directory(path);
         if (_files.empty()) {
-            _emu->make_default_media(_path);
+            //_emu->make_default_media(_path);
             read_directory(path);
         }
 
@@ -1011,9 +1001,9 @@ void gui_update()
     if (n > 0)
         gui_hid(buf,n);
     
-    n = get_hid_ir(buf);
-    if (n > 0)
-        gui_hid(buf,n);
+    // n = get_hid_ir(buf);
+    // if (n > 0)
+    //     gui_hid(buf,n);
 }
 
 void gui_key(int keycode, int pressed, int mods)
@@ -1058,29 +1048,29 @@ static void pad_key(int mask, int state, int key)
     gui_key(key,state & mask,0);
 }
 
-static void wii()
-{
-    int pad = wii_states[0].common();
-    pad_key(wii_right,pad,82);  // up
-    pad_key(wii_left,pad,81);   // down
-    pad_key(wii_down,pad,79);   // right
-    pad_key(wii_up,pad,80);     // left
-    pad_key(wii_home,pad,58);   // home/gui
-    pad_key(wii_a | wii_one | wii_two,pad,40); // enter (A)
-    _last_pad = pad;
-}
+// static void wii()
+// {
+//     int pad = wii_states[0].common();
+//     pad_key(wii_right,pad,82);  // up
+//     pad_key(wii_left,pad,81);   // down
+//     pad_key(wii_down,pad,79);   // right
+//     pad_key(wii_up,pad,80);     // left
+//     pad_key(wii_home,pad,58);   // home/gui
+//     pad_key(wii_a | wii_one | wii_two,pad,40); // enter (A)
+//     _last_pad = pad;
+// }
 
-static void ir(const uint8_t* j, int len)
-{
-    int pad = j[0] + (j[1] << 8);
-    pad_key(GENERIC_UP,pad,82);  // up
-    pad_key(GENERIC_DOWN,pad,81);   // down
-    pad_key(GENERIC_RIGHT,pad,79);   // right
-    pad_key(GENERIC_LEFT,pad,80);     // left
-    pad_key(GENERIC_RESET | GENERIC_FIRE_Z,pad,58);   // home/gui
-    pad_key(GENERIC_FIRE | GENERIC_FIRE_C | GENERIC_FIRE_B | GENERIC_FIRE_A,pad,40); // enter (A)
-    _last_pad = pad;
-}
+// static void ir(const uint8_t* j, int len)
+// {
+//     int pad = j[0] + (j[1] << 8);
+//     pad_key(GENERIC_UP,pad,82);  // up
+//     pad_key(GENERIC_DOWN,pad,81);   // down
+//     pad_key(GENERIC_RIGHT,pad,79);   // right
+//     pad_key(GENERIC_LEFT,pad,80);     // left
+//     pad_key(GENERIC_RESET | GENERIC_FIRE_Z,pad,58);   // home/gui
+//     pad_key(GENERIC_FIRE | GENERIC_FIRE_C | GENERIC_FIRE_B | GENERIC_FIRE_A,pad,40); // enter (A)
+//     _last_pad = pad;
+// }
 
 void gui_hid(const uint8_t* hid, int len)  // Parse HID event
 {
@@ -1093,8 +1083,8 @@ void gui_hid(const uint8_t* hid, int len)  // Parse HID event
     */
     switch (hid[1]) {
         case 0x01: keyboard(hid+1,len-1);   break;   // parse keyboard and maintain 1 key state
-        case 0x32: wii();                   break;   // parse wii stuff: generic?
-        case 0x42: ir(hid+2,len);           break;   // ir joy
+        // case 0x32: wii();                   break;   // parse wii stuff: generic?
+        // case 0x42: ir(hid+2,len);           break;   // ir joy
     }
     _gui._emu->hid(hid+1,len-1);    // send raw events
 }

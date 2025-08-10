@@ -22,11 +22,11 @@ using namespace std;
 // Handly for NES/SMS carts
 // Uses app1 as a cache with a crappy FS on top - default arduino config gives 1280k
 
-#ifdef ESP_PLATFORM
-#include <esp_spi_flash.h>
+#include <spi_flash_mmap.h>
 #include <esp_attr.h>
 #include <esp_partition.h>
-#include "rom/miniz.h"
+#include <inttypes.h>
+// #include "rom/miniz.h" // miniz not available in ESP-IDF v5.4
 
 // only map 1 file at a time
 spi_flash_mmap_handle_t _file_handle = 0;
@@ -124,7 +124,7 @@ public:
             return 0;
         printf("CrapFS::mmap mapping %s offset:%08X len:%d\n",file->name,file->offset,file->len);
         void* data = 0;
-        if (esp_partition_mmap(_part, file->offset, file->len, SPI_FLASH_MMAP_DATA, (const void**)&data, &_file_handle) == 0)
+        if (esp_partition_mmap(_part, file->offset, file->len, ESP_PARTITION_MMAP_DATA, (const void**)&data, &_file_handle) == 0)
         {
             printf("CrapFS::mmap mapped to %08X\n",data);
             return (uint8_t*)data;
@@ -221,32 +221,6 @@ FILE* mkfile(const char* path)
     return fopen(path,"wb");
 }
 
-#else
-#include <sys/stat.h>
-#include "../miniz.h"
-
-uint8_t* map_file(const char* path, int len)
-{
-    uint8_t* d;
-    Emu::load(path,&d,&len);
-    return d;
-}
-
-void unmap_file(uint8_t* ptr)
-{
-    delete ptr;
-}
-
-FILE* mkfile(const char* path)
-{
-    std::string v = path;
-    std::string dir = v.substr(0,v.find_last_of("/"));
-    mkdir(dir.c_str(), 0755);
-    return fopen(path,"wb");
-}
-
-#endif
-
 // map one bit array to another
 uint32_t generic_map(uint32_t bits, const uint32_t* m)
 {
@@ -261,47 +235,47 @@ uint32_t generic_map(uint32_t bits, const uint32_t* m)
 // unpack file and write to FS, use rom miniz on esp32
 // uses quite a lot of memory, call before initializing screen on atari
 // could actually use the screen mem (which might look cool) or the main cpu mem for buffer
-int unpack(const char* dst, const uint8_t* d, int len)
-{
-    printf("unpacking %s\n",dst);
-    FILE* f = mkfile(dst);
-    if (!f)
-        return -1;
+// int unpack(const char* dst, const uint8_t* d, int len)
+// {
+//     printf("unpacking %s\n",dst);
+//     FILE* f = mkfile(dst);
+//     if (!f)
+//         return -1;
 
-    #define BUF_SIZE 0x8000
-    uint8_t* buf = new uint8_t[BUF_SIZE];
-    if (!buf) {
-        fclose(f);
-        return -1;  // could use a smaller window on compression but would not generalize to other people's zips
-    }
+//     #define BUF_SIZE 0x8000
+//     uint8_t* buf = new uint8_t[BUF_SIZE];
+//     if (!buf) {
+//         fclose(f);
+//         return -1;  // could use a smaller window on compression but would not generalize to other people's zips
+//     }
 
-    tinfl_decompressor* dec = new tinfl_decompressor;   // largist
-    size_t in_bytes, out_bytes;
-    tinfl_status status;
-    int i = 0;
+//     tinfl_decompressor* dec = new tinfl_decompressor;   // largist
+//     size_t in_bytes, out_bytes;
+//     tinfl_status status;
+//     int i = 0;
 
-    tinfl_init(dec);
-    while (i < len) {
-        in_bytes = len-i;
-        out_bytes = BUF_SIZE;
-        status = tinfl_decompress(dec,d+i,&in_bytes,buf,buf,&out_bytes,11);
-        if (out_bytes != fwrite(buf,1,out_bytes,f)) {
-            status = TINFL_STATUS_FAILED;
-            break;
-        }
-        i += in_bytes;
-    }
+//     tinfl_init(dec);
+//     while (i < len) {
+//         in_bytes = len-i;
+//         out_bytes = BUF_SIZE;
+//         status = tinfl_decompress(dec,d+i,&in_bytes,buf,buf,&out_bytes,11);
+//         if (out_bytes != fwrite(buf,1,out_bytes,f)) {
+//             status = TINFL_STATUS_FAILED;
+//             break;
+//         }
+//         i += in_bytes;
+//     }
 
-    delete [] buf;
-    delete dec;
-    fclose(f);
+//     delete [] buf;
+//     delete dec;
+//     fclose(f);
 
-    if (status == TINFL_STATUS_FAILED) {
-        remove(dst);
-        return -1;
-    }
-    return 0;
-}
+//     if (status == TINFL_STATUS_FAILED) {
+//         remove(dst);
+//         return -1;
+//     }
+//     return 0;
+// }
 
 Emu::Emu(const char* n,int w,int h, int st, int aformat, int cc, int f) :
     name(n),width(w),height(h),standard(st),audio_format(aformat),cc_width(cc),flavor(f)
