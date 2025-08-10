@@ -37,6 +37,40 @@ uint32_t _frame_time = 0;
 uint32_t _drawn = 1;
 bool _inited = false;
 
+using namespace std;
+
+string get_ext(const string& s)
+{
+    string ext;
+    auto i = s.find_last_of(".");
+    if (i > 0) {
+        ext = s.substr(i+1);
+        for (i = 0; i < ext.length(); i++)
+            ext[i] = tolower(ext[i]);
+    }
+    return ext;
+}
+
+// missing in arduino?
+string to_string(int i)
+{
+    char buf[32];
+    sprintf(buf,"%d",i);
+    return buf;
+}
+
+
+void update_av()
+{
+    _emu->update();
+
+    int16_t abuffer[313*2];
+    int format = _emu->audio_format >> 8;
+    int sample_count = _emu->frame_sample_count();
+    sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
+    audio_write_16(abuffer,sample_count,format);
+}
+
 // dual core mode runs emulator on comms core
 void emu_task(void* arg)
 {
@@ -46,8 +80,14 @@ void emu_task(void* arg)
     printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
 
     //emu init
-    std::string folder = "/" + _emu->name;
-    gui_start(_emu,folder.c_str());
+    std::string rom_file = "/" + _emu->name + "/chase.nes";
+    //gui_start(_emu,folder.c_str());
+    //insert(const std::string& path, int flags, int disk_index)
+    if (_emu->insert(rom_file.c_str(),0,0) != 0) {
+        printf("Failed to load ROM, suspending emu_task\n");
+        vTaskSuspend(NULL);  // Suspend this task to prevent crashes
+        return;
+    }
     _drawn = _frame_counter;
 
     while(true) //emu loop
@@ -56,7 +96,8 @@ void emu_task(void* arg)
       video_sync();
       // Draw a frame, update sound, process hid events
       uint32_t t = xthal_get_ccount();
-      gui_update();
+      //gui_update();
+      update_av();
       _frame_time = xthal_get_ccount() - t;
       _lines = _emu->video_buffer();
       _drawn++;
@@ -145,7 +186,7 @@ extern "C" void app_main(void)
         last_key_time = current_time;
     }
     
-    vTaskDelay(1);
+    vTaskDelay(100);
 
     // Dump some stats
     perf();

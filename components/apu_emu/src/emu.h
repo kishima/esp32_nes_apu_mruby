@@ -28,8 +28,6 @@
 #include <vector>
 #include <map>
 
-//#include "hid_server/hid_server.h"
-
 #define EMU_ATARI 1
 #define EMU_NES 2
 #define EMU_NES6 4
@@ -112,8 +110,6 @@ public:
 
     int frame_sample_count();   // # of audio samples for next frame (standard dependent)
 
-    //virtual int make_default_media(const std::string& path) = 0;
-
     virtual int insert(const std::string& path, int flags = 1, int disk_index = 0) = 0;
     static int load(const std::string& path, uint8_t** data, int* len);
     static int head(const std::string& path, uint8_t* data, int len);
@@ -132,21 +128,14 @@ public:
     virtual const uint32_t* composite_palette();
 };
 
-void gui_start(Emu* emu, const char* path);
-void gui_hid(const uint8_t* hid, int len);  // Parse HID event
-void gui_update();
-void gui_key(int keycode, int pressed, int mod);
-
-extern "C"
-void gui_msg(const char* msg);         // temporarily display a msg
+// Utility functions for file handling
+std::string get_ext(const std::string& filename);
+std::string to_string(int value);
 
 // HID stub functions
 extern "C" {
     void hid_init();
     void hid_update();
-    int hid_get(unsigned char* buf, int len);
-    void sys_get_pref(const char* key, char* buf, int len);
-    void sys_set_pref(const char* key, const char* value);
 }
 
 // for loading carts
@@ -154,14 +143,10 @@ std::string get_ext(const std::string& s);
 extern "C" uint8_t* map_file(const char* path, int len);
 extern "C" void unmap_file(uint8_t* ptr);
 extern "C" FILE* mkfile(const char* path);
-//extern "C" int unpack(const char* dst_path, const uint8_t* d, int len);
 
 void audio_write_16(const int16_t* s, int len, int channels);
-int get_hid_ir(uint8_t* dst);
 uint32_t generic_map(uint32_t m, const uint32_t* target);
 
-Emu* NewAtari800(int ntsc = 1);
 Emu* NewNofrendo(int ntsc = 1);
-Emu* NewSMSPlus(int ntsc = 1);
 
 #endif /* emu_hpp */
