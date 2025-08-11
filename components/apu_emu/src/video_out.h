@@ -44,6 +44,7 @@ int _pal_ = 0;
 #include "driver/dac.h"
 #include "driver/gpio.h"
 #include "driver/i2s.h"
+#include "driver/gptimer.h"
 
 
 //====================================================================================================
@@ -54,6 +55,7 @@ int _pal_ = 0;
 
 lldesc_t _dma_desc[4] = {0};
 intr_handle_t _isr_handle;
+gptimer_handle_t _audio_timer = NULL;
 
 extern "C"
 void IRAM_ATTR video_isr(volatile void* buf);
@@ -65,6 +67,57 @@ void IRAM_ATTR i2s_intr_handler_video(void *arg)
         video_isr((volatile void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf)); // get the next line of video
     I2S0.int_clr.val = I2S0.int_st.val;                     // reset the interrupt
 }
+
+extern "C"
+void IRAM_ATTR audio_isr();
+
+bool IRAM_ATTR audio_timer_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    audio_isr();
+    return false; // return false to indicate we're not yielding to a higher priority task
+}
+
+  // Setup audio timer interrupt based on sample rate
+  esp_err_t setup_audio_timer(float sample_rate_mhz)
+  {
+      // Calculate timer period from sample rate
+      // sample_rate_mhz is in MHz, convert to microseconds
+      uint64_t timer_period_us = (uint64_t)(1.0 / sample_rate_mhz);
+
+      gptimer_config_t timer_config = {
+          .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+          .direction = GPTIMER_COUNT_UP,
+          .resolution_hz = 1000000, // 1MHz resolution
+          .intr_priority = 0,
+          .flags = {
+              .intr_shared = 0
+          }
+      };
+      
+      esp_err_t ret = gptimer_new_timer(&timer_config, &_audio_timer);
+      if (ret != ESP_OK) return ret;
+
+      gptimer_event_callbacks_t cbs = {
+          .on_alarm = audio_timer_callback,
+      };
+      ret = gptimer_register_event_callbacks(_audio_timer, &cbs, NULL);
+      if (ret != ESP_OK) return ret;
+
+      gptimer_alarm_config_t alarm_config = {
+          .alarm_count = timer_period_us,
+          .reload_count = 0,
+          .flags = {
+              .auto_reload_on_alarm = 1,
+          }
+      };
+      ret = gptimer_set_alarm_action(_audio_timer, &alarm_config);
+      if (ret != ESP_OK) return ret;
+
+      ret = gptimer_enable(_audio_timer);
+      if (ret != ESP_OK) return ret;
+
+      return gptimer_start(_audio_timer);
+  }
 
 static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 {
@@ -182,9 +235,16 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 void video_init_hw(int line_width, int samples_per_cc)
 {
     printf("video_init_hw: line_width=%d, samples_per_cc=%d\n", line_width, samples_per_cc);
+
+    #if 0
     // setup apll 4x NTSC or PAL colorburst rate
     start_dma(line_width,samples_per_cc,1);
-
+    #else
+    // Use NTSC audio sample rate: ~15.7kHz
+    printf("Use Timer Interrupt for audio\n");    
+    setup_audio_timer(0.0157); // 15.7kHz sample rate
+    #endif
+    
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
     // But when using the APLL there appears to be some clock domain conflict that causes
     // nasty digitial spikes and dropouts. You are also limited to a single audio channel.
@@ -840,6 +900,7 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
         }
     } else {
         // ntsc
+        #if 1 //can be disable to skip video output.
         if (i < _active_lines) {                // active video
             sync(buf,_hsync);
             burst(buf);
@@ -854,6 +915,7 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
         } else {                                // pre render/black
             blanking(buf,false);
         }
+        #endif
     }
 
     if (_line_counter == _line_count) {
@@ -862,4 +924,26 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
     }
 
     ISR_END();
+}
+
+extern "C"
+void IRAM_ATTR audio_isr()
+{
+    if (!_lines)
+        return;
+
+    ISR_BEGIN();
+    uint8_t s = _audio_r < _audio_w ? _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)] : 0x20;
+    audio_sample(s);
+    //audio_sample(_sin64[_x++ & 0x3F]);
+
+    int i = _line_counter++;
+
+    if (_line_counter == _line_count) {
+        _line_counter = 0;                      // frame is done
+        _frame_counter++;
+    }
+
+    ISR_END();
+
 }
