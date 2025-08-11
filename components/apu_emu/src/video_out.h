@@ -15,7 +15,10 @@
 ** SOFTWARE.
 */
 
-#define AUDIO_PIN   18  // can be any pin
+//#define AUDIO_PIN   18  // can be any pin
+#define AUDIO_PIN   26
+
+#define DISABLE_VIDEO_INTR
 
 int _pal_ = 0;
 
@@ -236,7 +239,7 @@ void video_init_hw(int line_width, int samples_per_cc)
 {
     printf("video_init_hw: line_width=%d, samples_per_cc=%d\n", line_width, samples_per_cc);
 
-    #if 0
+    #ifndef DISABLE_VIDEO_INTR
     // setup apll 4x NTSC or PAL colorburst rate
     start_dma(line_width,samples_per_cc,1);
     #else
@@ -900,7 +903,6 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
         }
     } else {
         // ntsc
-        #if 1 //can be disable to skip video output.
         if (i < _active_lines) {                // active video
             sync(buf,_hsync);
             burst(buf);
@@ -915,7 +917,6 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
         } else {                                // pre render/black
             blanking(buf,false);
         }
-        #endif
     }
 
     if (_line_counter == _line_count) {
