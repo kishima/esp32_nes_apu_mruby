@@ -60,6 +60,7 @@ lldesc_t _dma_desc[4] = {0};
 intr_handle_t _isr_handle;
 gptimer_handle_t _audio_timer = NULL;
 
+#ifndef DISABLE_VIDEO_INTR
 extern "C"
 void IRAM_ATTR video_isr(volatile void* buf);
 
@@ -70,6 +71,7 @@ void IRAM_ATTR i2s_intr_handler_video(void *arg)
         video_isr((volatile void*)(((lldesc_t*)I2S0.out_eof_des_addr)->buf)); // get the next line of video
     I2S0.int_clr.val = I2S0.int_st.val;                     // reset the interrupt
 }
+#endif
 
 extern "C"
 void IRAM_ATTR audio_isr();
@@ -122,6 +124,7 @@ bool IRAM_ATTR audio_timer_callback(gptimer_handle_t timer, const gptimer_alarm_
       return gptimer_start(_audio_timer);
   }
 
+#ifndef DISABLE_VIDEO_INTR
 static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 {
     printf("start_dma: function entry, line_width=%d, samples_per_cc=%d, ch=%d\n", line_width, samples_per_cc, ch);
@@ -234,6 +237,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     I2S0.out_link.start = 1;
     return esp_intr_enable(_isr_handle);        // start interruprs!
 }
+#endif
 
 void video_init_hw(int line_width, int samples_per_cc)
 {
@@ -636,6 +640,7 @@ uint32_t _isr_us = 0;
 #define ISR_END()
 #endif
 
+#ifndef DISABLE_VIDEO_INTR
 // draw a line of game in NTSC
 void IRAM_ATTR blit(uint8_t* src, uint16_t* dst)
 {
@@ -797,6 +802,7 @@ void IRAM_ATTR pal_sync(uint16_t* line, int i)
     pal_sync2(line,_line_width/2, t & 2);
     pal_sync2(line+_line_width/2,_line_width/2, t & 1);
 }
+#endif
 
 //  audio is buffered as 6 bit unsigned samples
 uint8_t _audio_buffer[1024];
@@ -872,6 +878,7 @@ void video_sync()
   vTaskDelay(n+1);
 }
 
+#ifndef DISABLE_VIDEO_INTR
 // Workhorse ISR handles audio and video updates
 extern "C"
 void IRAM_ATTR video_isr(volatile void* vbuf)
@@ -926,6 +933,7 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
 
     ISR_END();
 }
+#endif
 
 extern "C"
 void IRAM_ATTR audio_isr()
