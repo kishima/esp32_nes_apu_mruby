@@ -15,9 +15,7 @@
 ** SOFTWARE.
 */
 
-#define VIDEO_PIN   26
 #define AUDIO_PIN   18  // can be any pin
-//#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
 
 int _pal_ = 0;
 
@@ -46,10 +44,6 @@ int _pal_ = 0;
 #include "driver/dac.h"
 #include "driver/gpio.h"
 #include "driver/i2s.h"
-
-// #ifdef IR_PIN
-// #include "ir_input.h"  // ir peripherals
-// #endif
 
 
 //====================================================================================================
@@ -126,9 +120,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     //  rtc_clk_apll_enable(1,0x00,0x00,0x4,0);   // 20mhz for fancy DDS
 
     // ESP-IDF v5.4 APLL configuration - enable APLL for audio/video timing
-    printf("start_dma: enabling APLL\n");
     rtc_clk_apll_enable(true);
-    printf("start_dma: APLL enabled\n");
     
     // Previous ESP-IDF API (pre-v5.4):
     // rtc_clk_apll_enable(true, 0, 0, 0, 0);
@@ -153,18 +145,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
                 // ESP-IDF v5.4: Configure APLL coefficients directly
                 //https://github.com/Roger-random/ESP_8_BIT_composite/issues/50
                 printf("start_dma: setting APLL coeff for case 4\n");
-                #if 0
-                // Skip APLL configuration for now - use default clock instead
-                printf("start_dma: skipping APLL coeff for debugging\n");
-                #else
-                printf("start_dma: set APLL parmas\n");
-                // OLD API
-                // void rtc_clk_apll_enable(bool enable, uint32_t sdm0, uint32_t sdm1, uint32_t sdm2, uint32_t o_div)
-                // rtc_clk_apll_enable(1,0x46,0x97,0x4,1);   break;
-                // NEW API
-                // rtc_clk_apll_coeff_set(uint32_t o_div, uint32_t sdm0, uint32_t sdm1, uint32_t sdm2)
                 rtc_clk_apll_coeff_set(1, 0x46, 0x97, 0x4);
-                #endif
                 printf("start_dma: APLL coeff set completed for case 4\n");
                 break;    
         }
@@ -174,7 +155,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
     } else {
         // PAL timing configuration - 17.734476mhz ~4x PAL
         // ESP-IDF v5.4: Configure APLL coefficients directly
-        rtc_clk_apll_coeff_set(0x04, 0xA4, 0x6, 1);
+        rtc_clk_apll_coeff_set(1, 0x04, 0xA4, 0x6);
         
         // Original ESP-IDF v4.x API equivalent:
         // rtc_clk_apll_enable(1,0x04,0xA4,0x6,1);
@@ -202,9 +183,7 @@ void video_init_hw(int line_width, int samples_per_cc)
 {
     printf("video_init_hw: line_width=%d, samples_per_cc=%d\n", line_width, samples_per_cc);
     // setup apll 4x NTSC or PAL colorburst rate
-    printf("video_init_hw: calling start_dma\n");
     start_dma(line_width,samples_per_cc,1);
-    printf("video_init_hw: start_dma completed\n");
 
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
     // But when using the APLL there appears to be some clock domain conflict that causes
@@ -254,17 +233,6 @@ void video_init_hw(int line_width, int samples_per_cc)
     // ledcAttachPin(AUDIO_PIN, 0);  // pin, channel
     // ledcWrite(0,0);
 
-    //  IR input if used
-// #ifdef IR_PIN
-//     gpio_config_t io_conf = {
-//         .pin_bit_mask = (1ULL << IR_PIN),
-//         .mode = GPIO_MODE_INPUT,
-//         .pull_up_en = GPIO_PULLUP_ENABLE,
-//         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-//         .intr_type = GPIO_INTR_DISABLE
-//     };
-//     gpio_config(&io_conf);
-// #endif
 }
 
 // send an audio sample every scanline (15720hz for ntsc, 15600hz for PAL)
@@ -853,10 +821,6 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
     uint8_t s = _audio_r < _audio_w ? _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)] : 0x20;
     audio_sample(s);
     //audio_sample(_sin64[_x++ & 0x3F]);
-
-// #ifdef IR_PIN
-//     ir_sample();
-// #endif
 
     int i = _line_counter++;
     uint16_t* buf = (uint16_t*)vbuf;
