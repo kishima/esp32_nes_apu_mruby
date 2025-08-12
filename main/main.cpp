@@ -144,7 +144,6 @@ extern "C" void app_main(void)
   printf("app_main on core %d\n", xPortGetCoreID()); 
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
-  hid_init();
 
   // create for Emulator task
   // nofrendo needs 5k word stack, start on core 1
@@ -163,9 +162,6 @@ extern "C" void app_main(void)
       }
     }
 
-    // update the bluetooth edr/hid stack
-    hid_update(); // do nothing
-    
     // 擬似的にキー入力を与える（テスト用）- 実時間ベース
     #if 1
     static uint32_t last_key_time = 0;
