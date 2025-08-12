@@ -588,17 +588,72 @@ Emu* NewNofrendo(int ntsc)
 
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++;
+
+// NSF file header structure
+struct NSFHeader {
+    char signature[5];        // "NESM" + 0x1A
+    uint8_t version;         // Version number
+    uint8_t total_songs;     // Total number of songs
+    uint8_t starting_song;   // Starting song (1-based)
+    uint16_t load_addr;      // Load address (little endian)
+    uint16_t init_addr;      // Init address (little endian)
+    uint16_t play_addr;      // Play address (little endian)
+    char song_name[32];      // Song name (null terminated)
+    char artist[32];         // Artist name (null terminated)
+    char copyright[32];      // Copyright (null terminated)
+    uint16_t ntsc_speed;     // NTSC speed (little endian)
+    uint8_t bankswitch[8];   // Bank switching info
+    uint16_t pal_speed;      // PAL speed (little endian)
+    uint8_t pal_ntsc_flags;  // PAL/NTSC flags
+    uint8_t extra_sound;     // Extra sound chip support
+    uint8_t reserved[4];     // Reserved bytes
+};
+
 class EmuNsfPlay : public Emu {
     uint8_t** _lines;
+    NSFHeader _nsf_header;
+    uint16_t _current_song;
 public:
     EmuNsfPlay(int ntsc) : Emu("nofrendo",256,240,ntsc,(16 | (1 << 8)),4,EMU_NES)    // audio is 16bit, 3 or 6 cc width
     {
         _lines = 0;
         _audio_frequency = audio_frequency;
+        _current_song = 1;
+        memset(&_nsf_header, 0, sizeof(_nsf_header));
     }
 
-    // Load ROM data from SPIFFS
-    uint8_t* load_rom_from_spiffs(const char* filename, int* size) {
+    // Parse NSF header
+    bool parse_nsf_header(uint8_t* nsf_data, int size) {
+        if (size < sizeof(NSFHeader)) {
+            printf("NSF file too small\n");
+            return false;
+        }
+
+        memcpy(&_nsf_header, nsf_data, sizeof(NSFHeader));
+
+        // Verify NSF signature
+        if (strncmp(_nsf_header.signature, "NESM", 4) != 0 || _nsf_header.signature[4] != 0x1A) {
+            printf("Invalid NSF signature\n");
+            return false;
+        }
+
+        printf("NSF Header Info:\n");
+        printf("  Version: %d\n", _nsf_header.version);
+        printf("  Total songs: %d\n", _nsf_header.total_songs);
+        printf("  Starting song: %d\n", _nsf_header.starting_song);
+        printf("  Load address: $%04X\n", _nsf_header.load_addr);
+        printf("  Init address: $%04X\n", _nsf_header.init_addr);
+        printf("  Play address: $%04X\n", _nsf_header.play_addr);
+        printf("  Song name: %.32s\n", _nsf_header.song_name);
+        printf("  Artist: %.32s\n", _nsf_header.artist);
+        printf("  Copyright: %.32s\n", _nsf_header.copyright);
+
+        _current_song = _nsf_header.starting_song;
+        return true;
+    }
+
+    // Load NSF data from SPIFFS
+    uint8_t* load_nsf_from_spiffs(const char* filename, int* size) {
         FILE* file = fopen(filename, "rb");
         if (!file) {
             printf("Failed to open ROM file: %s\n", filename);
@@ -639,21 +694,24 @@ public:
             _nofrendo_rom = nullptr;
         }
         
-        printf("nofrendo inserting ROM from SPIFFS: %s\n", path.c_str());
+        printf("NSF Player inserting NSF from SPIFFS: %s\n", path.c_str());
 
-        // Load ROM from SPIFFS
-        int rom_size;
-        _nofrendo_rom = load_rom_from_spiffs(path.c_str(), &rom_size);
+        // Load NSF from SPIFFS
+        int nsf_size;
+        _nofrendo_rom = load_nsf_from_spiffs(path.c_str(), &nsf_size);
         if (!_nofrendo_rom) {
-            printf("nofrendo can't load ROM from SPIFFS: %s\n", path.c_str());
+            printf("NSF Player can't load NSF from SPIFFS: %s\n", path.c_str());
             return -1;
         }
 
-        printf("nofrendo loaded ROM %s: %d bytes\n", path.c_str(), rom_size);
-
+        printf("NSF Player loaded NSF %s: %d bytes\n", path.c_str(), nsf_size);
+        parse_nsf_header(_nofrendo_rom, nsf_size);
+        
         // Initialize NES emulation with ROM data
         nes_emulate_init(path.c_str(), width, height);
-        _lines = nes_emulate_frame(true);   // first frame!
+        printf("nes_emulate_init done\n");
+        
+        //_lines = nes_emulate_frame(true);   // first frame!
         return 0;
     }
 
@@ -685,15 +743,12 @@ public:
 
     
     virtual void gen_palettes() {};
-
-    virtual const uint32_t* ntsc_palette() { return cc_width == 3 ? nes_3_phase : nes_4_phase; };
-    virtual const uint32_t* pal_palette() { return _nes_yuv_4_phase_pal; };
-    virtual const uint32_t* rgb_palette() { return nes_pal; };
+    virtual const uint32_t* ntsc_palette() { return 0; };
+    virtual const uint32_t* pal_palette() { return 0; };
+    virtual const uint32_t* rgb_palette() { return 0; };
 
     virtual int info(const std::string& file, std::vector<std::string>& strs) { return -1; };
     virtual void hid(const uint8_t* d, int len) {};
-
-
 
     void pad(int pressed, int index)
     {
@@ -735,9 +790,6 @@ public:
             case 225: pad(pressed,event_joypad1_a); break; // left shift key event_joypad1_a
             case 226: pad(pressed,event_joypad1_b); break; // option key event_joypad1_b
 
-            //case 59: system(pressed,INPUT_PAUSE); break; // F2
-            //case 61: system(pressed,INPUT_START); break; // F4
-            //case 62: system(pressed,((KEY_MOD_LSHIFT|KEY_MOD_RSHIFT) & mods) ? INPUT_HARD_RESET : INPUT_SOFT_RESET); break; // F5
         }
     }
 

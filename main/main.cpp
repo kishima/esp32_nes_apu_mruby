@@ -80,7 +80,8 @@ void emu_task(void* arg)
     printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
 
     //emu init
-    std::string rom_file = "/" + _emu->name + "/chase.nes";
+    //std::string rom_file = "/" + _emu->name + "/chase.nes";
+    std::string rom_file = "/nsf/test.nsf";
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
         printf("Failed to load ROM, suspending emu_task\n");
         vTaskSuspend(NULL);  // Suspend this task to prevent crashes
