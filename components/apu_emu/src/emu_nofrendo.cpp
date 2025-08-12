@@ -579,14 +579,6 @@ public:
     virtual const uint32_t* ntsc_palette() { return cc_width == 3 ? nes_3_phase : nes_4_phase; };
     virtual const uint32_t* pal_palette() { return _nes_yuv_4_phase_pal; };
     virtual const uint32_t* rgb_palette() { return nes_pal; };
-
-    // virtual int make_default_media(const string& path)
-    // {
-    //     unpack((path + "/sokoban.nes").c_str(),sokoban_nes,sizeof(sokoban_nes));
-    //     unpack((path + "/chase.nes").c_str(),chase_nes,sizeof(chase_nes));
-    //     unpack((path + "/tokumaru_raycast.nes").c_str(),tokumaru_raycast_nes,sizeof(tokumaru_raycast_nes));
-    //     return 0;
-    // }
 };
 
 Emu* NewNofrendo(int ntsc)
@@ -595,3 +587,163 @@ Emu* NewNofrendo(int ntsc)
 }
 
 
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++;
+class EmuNsfPlay : public Emu {
+    uint8_t** _lines;
+public:
+    EmuNsfPlay(int ntsc) : Emu("nofrendo",256,240,ntsc,(16 | (1 << 8)),4,EMU_NES)    // audio is 16bit, 3 or 6 cc width
+    {
+        _lines = 0;
+        _audio_frequency = audio_frequency;
+    }
+
+    // Load ROM data from SPIFFS
+    uint8_t* load_rom_from_spiffs(const char* filename, int* size) {
+        FILE* file = fopen(filename, "rb");
+        if (!file) {
+            printf("Failed to open ROM file: %s\n", filename);
+            return nullptr;
+        }
+
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        *size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        // Allocate memory and read file
+        uint8_t* rom_data = (uint8_t*)malloc(*size);
+        if (!rom_data) {
+            printf("Failed to allocate memory for ROM\n");
+            fclose(file);
+            return nullptr;
+        }
+
+        size_t read_bytes = fread(rom_data, 1, *size, file);
+        fclose(file);
+
+        if (read_bytes != *size) {
+            printf("Failed to read complete ROM file\n");
+            free(rom_data);
+            return nullptr;
+        }
+
+        printf("Loaded ROM %s: %d bytes\n", filename, *size);
+        return rom_data;
+    }
+
+    virtual int insert(const std::string& path, int flags, int disk_index)
+    {
+        // Free previous ROM data
+        if (_nofrendo_rom) {
+            free(_nofrendo_rom);
+            _nofrendo_rom = nullptr;
+        }
+        
+        printf("nofrendo inserting ROM from SPIFFS: %s\n", path.c_str());
+
+        // Load ROM from SPIFFS
+        int rom_size;
+        _nofrendo_rom = load_rom_from_spiffs(path.c_str(), &rom_size);
+        if (!_nofrendo_rom) {
+            printf("nofrendo can't load ROM from SPIFFS: %s\n", path.c_str());
+            return -1;
+        }
+
+        printf("nofrendo loaded ROM %s: %d bytes\n", path.c_str(), rom_size);
+
+        // Initialize NES emulation with ROM data
+        nes_emulate_init(path.c_str(), width, height);
+        _lines = nes_emulate_frame(true);   // first frame!
+        return 0;
+    }
+
+    virtual int update()
+    {
+        if (_nofrendo_rom)
+            _lines = nes_emulate_frame(true);
+        return 0;
+    }
+
+    virtual uint8_t** video_buffer()
+    {
+        return _lines;
+    }
+    
+    virtual int audio_buffer(int16_t* b, int len)
+    {
+        int n = frame_sample_count();
+        if (nes_sound_cb) {
+            nes_sound_cb(b,n);  // 8 bit unsigned
+            uint8_t* b8 = (uint8_t*)b;
+            for (int i = n-1; i >= 0; i--)
+                b[i] = (b8[i] ^ 0x80) << 8;  // turn it back into signed 16
+        }
+        else
+            memset(b,0,2*n);
+        return n;
+    }
+
+    
+    virtual void gen_palettes() {};
+
+    virtual const uint32_t* ntsc_palette() { return cc_width == 3 ? nes_3_phase : nes_4_phase; };
+    virtual const uint32_t* pal_palette() { return _nes_yuv_4_phase_pal; };
+    virtual const uint32_t* rgb_palette() { return nes_pal; };
+
+    virtual int info(const std::string& file, std::vector<std::string>& strs) { return -1; };
+    virtual void hid(const uint8_t* d, int len) {};
+
+
+
+    void pad(int pressed, int index)
+    {
+        event_t e = event_get(index);
+        e(pressed);
+    }
+
+    enum {
+        event_joypad1_up_ = 1,
+        event_joypad1_down_ = 2,
+        event_joypad1_left_ = 4,
+        event_joypad1_right_ = 8,
+        event_joypad1_start_ = 16,
+        event_joypad1_select_ = 32,
+        event_joypad1_a_ = 64,
+        event_joypad1_b_ = 128,
+
+        event_soft_reset_ = 256,
+        event_hard_reset_ = 512
+    };
+
+    virtual void key(int keycode, int pressed, int mods)
+    {
+        switch (keycode) {
+            case 82: pad(pressed,event_joypad1_up); break;
+            case 81: pad(pressed,event_joypad1_down); break;
+            case 80: pad(pressed,event_joypad1_left); break;
+            case 79: pad(pressed,event_joypad1_right); break;
+
+            case 21: pad(pressed,event_soft_reset); break; // soft reset - 'r'
+            case 23: pad(pressed,event_hard_reset); break; // hard reset - 't'
+
+            case 61: pad(pressed,event_joypad1_start); break; // F4
+            case 62: pad(pressed,((KEY_MOD_LSHIFT|KEY_MOD_RSHIFT) & mods) ? event_hard_reset : event_soft_reset); break; // F5
+
+            case 40: pad(pressed,event_joypad1_start); break; // return
+            case 43: pad(pressed,event_joypad1_select); break; // tab
+
+            case 225: pad(pressed,event_joypad1_a); break; // left shift key event_joypad1_a
+            case 226: pad(pressed,event_joypad1_b); break; // option key event_joypad1_b
+
+            //case 59: system(pressed,INPUT_PAUSE); break; // F2
+            //case 61: system(pressed,INPUT_START); break; // F4
+            //case 62: system(pressed,((KEY_MOD_LSHIFT|KEY_MOD_RSHIFT) & mods) ? INPUT_HARD_RESET : INPUT_SOFT_RESET); break; // F5
+        }
+    }
+
+};
+
+Emu* NewNsfplayer(int ntsc)
+{
+    return new EmuNsfPlay(ntsc);
+}

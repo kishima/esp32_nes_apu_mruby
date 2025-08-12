@@ -148,5 +148,6 @@ void audio_write_16(const int16_t* s, int len, int channels);
 uint32_t generic_map(uint32_t m, const uint32_t* target);
 
 Emu* NewNofrendo(int ntsc = 1);
+Emu* NewNsfplayer(int ntsc = 1);
 
 #endif /* emu_hpp */

@@ -143,7 +143,8 @@ extern "C" void app_main(void)
 {    
   printf("app_main on core %d\n", xPortGetCoreID()); 
   mount_filesystem();                       // mount the filesystem!
-  _emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
+  //_emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
+  _emu = NewNsfplayer(VIDEO_STANDARD);       // create the emulator!
 
   // create for Emulator task
   // nofrendo needs 5k word stack, start on core 1
@@ -156,12 +157,15 @@ extern "C" void app_main(void)
         printf("video_init\n");
         video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
         _inited = true;
-        printf("video_init done\n");
+        break;
       } else {
         vTaskDelay(1);
       }
     }
+  }
+  printf("video_init done\n");
 
+  while(true){
     // 擬似的にキー入力を与える（テスト用）- 実時間ベース
     #if 1
     static uint32_t last_key_time = 0;
