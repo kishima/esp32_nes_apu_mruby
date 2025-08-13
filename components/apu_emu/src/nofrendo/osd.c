@@ -249,3 +249,10 @@ uint8** nes_emulate_frame(bool draw_flag)
         return primary_buffer->line;
     return NULL;
 }
+
+void nes_renderframe_audio();
+uint8** nes_emulate_frame_audio()
+{
+    nes_renderframe_audio();
+    return NULL;
+}

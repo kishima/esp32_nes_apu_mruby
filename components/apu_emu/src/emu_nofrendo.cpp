@@ -235,6 +235,15 @@ int nes_emulate_init(const char* path, int width, int height);
 extern "C"
 uint8_t** nes_emulate_frame(bool draw_flag);
 
+extern "C"
+uint8_t** nes_emulate_frame_audio(bool draw_flag);
+
+// NSF mapper support
+extern "C" {
+#include "nofrendo/nes_mmc.h"
+#include "nofrendo/nes_rom.h"
+}
+
 static void (*nes_sound_cb)(void *buffer, int length) = 0;
 
 extern uint32_t nes_pal[256];
@@ -652,6 +661,65 @@ public:
         return true;
     }
 
+    // Detect NSF mapper type from bankswitch info
+    int detect_nsf_mapper() {
+        // Check if bankswitch is used
+        bool has_bankswitch = false;
+        for (int i = 0; i < 8; i++) {
+            if (_nsf_header.bankswitch[i] != 0) {
+                has_bankswitch = true;
+                break;
+            }
+        }
+
+        if (!has_bankswitch) {
+            printf("NSF: No bankswitch detected, using Mapper 0 (NROM)\n");
+            return 0;  // NROM - no mapper
+        }
+
+        // Most NSF files with bankswitch use MMC1 or MMC3-style mapping
+        // Default to MMC1 (Mapper 1) for compatibility
+        printf("NSF: Bankswitch detected, using Mapper 1 (MMC1)\n");
+        printf("NSF: Bankswitch pattern: ");
+        for (int i = 0; i < 8; i++) {
+            printf("%02X ", _nsf_header.bankswitch[i]);
+        }
+        printf("\n");
+        
+        return 1;  // MMC1
+    }
+
+    // Setup NSF mapper based on detected type
+    bool setup_nsf_mapper(int mapper_number) {
+        // Create a dummy rominfo structure for NSF
+        rominfo_t nsf_rominfo;
+        memset(&nsf_rominfo, 0, sizeof(nsf_rominfo));
+        
+        // Set up basic ROM info for NSF
+        nsf_rominfo.mapper_number = mapper_number;
+        nsf_rominfo.rom_banks = 32;      // Assume 512KB ROM space for NSF
+        nsf_rominfo.vrom_banks = 0;      // NSF usually has no CHR ROM
+        nsf_rominfo.mirror = MIRROR_VERT; // Default mirroring
+        nsf_rominfo.flags = 0;
+        
+        // Create NSF filename
+        strcpy(nsf_rominfo.filename, "nsf_player.nsf");
+        
+        printf("NSF: Setting up mapper %d for NSF playback\n", mapper_number);
+        
+        // Create mapper context
+        mmc_t *nsf_mmc = mmc_create(&nsf_rominfo);
+        if (!nsf_mmc) {
+            printf("NSF: Failed to create mapper %d\n", mapper_number);
+            return false;
+        }
+        
+        printf("NSF: Mapper %d (%s) initialized successfully\n", 
+               mapper_number, nsf_mmc->intf->name);
+        
+        return true;
+    }
+
     // Load NSF data from SPIFFS
     uint8_t* load_nsf_from_spiffs(const char* filename, int* size) {
         FILE* file = fopen(filename, "rb");
@@ -705,12 +773,26 @@ public:
         }
 
         printf("NSF Player loaded NSF %s: %d bytes\n", path.c_str(), nsf_size);
-        parse_nsf_header(_nofrendo_rom, nsf_size);
         
-        // Initialize NES emulation with ROM data
+        // Parse NSF header
+        if (!parse_nsf_header(_nofrendo_rom, nsf_size)) {
+            printf("NSF header parsing failed\n");
+            free(_nofrendo_rom);
+            _nofrendo_rom = nullptr;
+            return -1;
+        }
+
+        // Detect and setup NSF mapper
+        int mapper_number = detect_nsf_mapper();
+        if (!setup_nsf_mapper(mapper_number)) {
+            printf("NSF: Failed to setup mapper %d\n", mapper_number);
+            // Continue anyway with basic NES initialization
+        }
+        
+        // Initialize NES emulation for NSF playback
         nes_emulate_init(path.c_str(), width, height);
         printf("nes_emulate_init done\n");
-        
+
         //_lines = nes_emulate_frame(true);   // first frame!
         return 0;
     }
@@ -718,7 +800,7 @@ public:
     virtual int update()
     {
         if (_nofrendo_rom)
-            _lines = nes_emulate_frame(true);
+            _lines = nes_emulate_frame_audio(true);
         return 0;
     }
 
@@ -746,53 +828,9 @@ public:
     virtual const uint32_t* ntsc_palette() { return 0; };
     virtual const uint32_t* pal_palette() { return 0; };
     virtual const uint32_t* rgb_palette() { return 0; };
-
     virtual int info(const std::string& file, std::vector<std::string>& strs) { return -1; };
     virtual void hid(const uint8_t* d, int len) {};
-
-    void pad(int pressed, int index)
-    {
-        event_t e = event_get(index);
-        e(pressed);
-    }
-
-    enum {
-        event_joypad1_up_ = 1,
-        event_joypad1_down_ = 2,
-        event_joypad1_left_ = 4,
-        event_joypad1_right_ = 8,
-        event_joypad1_start_ = 16,
-        event_joypad1_select_ = 32,
-        event_joypad1_a_ = 64,
-        event_joypad1_b_ = 128,
-
-        event_soft_reset_ = 256,
-        event_hard_reset_ = 512
-    };
-
-    virtual void key(int keycode, int pressed, int mods)
-    {
-        switch (keycode) {
-            case 82: pad(pressed,event_joypad1_up); break;
-            case 81: pad(pressed,event_joypad1_down); break;
-            case 80: pad(pressed,event_joypad1_left); break;
-            case 79: pad(pressed,event_joypad1_right); break;
-
-            case 21: pad(pressed,event_soft_reset); break; // soft reset - 'r'
-            case 23: pad(pressed,event_hard_reset); break; // hard reset - 't'
-
-            case 61: pad(pressed,event_joypad1_start); break; // F4
-            case 62: pad(pressed,((KEY_MOD_LSHIFT|KEY_MOD_RSHIFT) & mods) ? event_hard_reset : event_soft_reset); break; // F5
-
-            case 40: pad(pressed,event_joypad1_start); break; // return
-            case 43: pad(pressed,event_joypad1_select); break; // tab
-
-            case 225: pad(pressed,event_joypad1_a); break; // left shift key event_joypad1_a
-            case 226: pad(pressed,event_joypad1_b); break; // option key event_joypad1_b
-
-        }
-    }
-
+    virtual void key(int keycode, int pressed, int mods){};
 };
 
 Emu* NewNsfplayer(int ntsc)
