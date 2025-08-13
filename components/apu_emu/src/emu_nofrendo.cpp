@@ -236,7 +236,8 @@ extern "C"
 uint8_t** nes_emulate_frame(bool draw_flag);
 
 extern "C"
-uint8_t** nes_emulate_frame_audio(bool draw_flag);
+void nes_renderframe_audio();
+//uint8_t** nes_emulate_frame_audio(bool draw_flag);
 
 // NSF mapper support
 extern "C" {
@@ -622,12 +623,14 @@ class EmuNsfPlay : public Emu {
     uint8_t** _lines;
     NSFHeader _nsf_header;
     uint16_t _current_song;
+    bool _nsf_initialized;
 public:
     EmuNsfPlay(int ntsc) : Emu("nofrendo",256,240,ntsc,(16 | (1 << 8)),4,EMU_NES)    // audio is 16bit, 3 or 6 cc width
     {
         _lines = 0;
         _audio_frequency = audio_frequency;
         _current_song = 1;
+        _nsf_initialized = false;
         memset(&_nsf_header, 0, sizeof(_nsf_header));
     }
 
@@ -659,6 +662,36 @@ public:
 
         _current_song = _nsf_header.starting_song;
         return true;
+    }
+
+    // Initialize NSF playback for specific song
+    bool nsf_init_song(uint16_t song_number) {
+        if (song_number < 1 || song_number > _nsf_header.total_songs) {
+            printf("NSF: Invalid song number %d (valid: 1-%d)\n", 
+                   song_number, _nsf_header.total_songs);
+            return false;
+        }
+
+        _current_song = song_number;
+        
+        printf("NSF: Initializing song %d/%d\n", song_number, _nsf_header.total_songs);
+        printf("NSF: INIT address: $%04X\n", _nsf_header.init_addr);
+        printf("NSF: PLAY address: $%04X\n", _nsf_header.play_addr);
+        
+        // TODO: Set up 6502 CPU state for NSF INIT call
+        // - Set A register = song_number - 1 (0-based)  
+        // - Set X register = 0 (NTSC) or 1 (PAL)
+        // - Call INIT routine at _nsf_header.init_addr
+        
+        _nsf_initialized = true;
+        return true;
+    }
+
+    // Change current song (runtime song switching)
+    void nsf_change_song(uint16_t song_number) {
+        if (nsf_init_song(song_number)) {
+            printf("NSF: Changed to song %d\n", song_number);
+        }
     }
 
     // Detect NSF mapper type from bankswitch info
@@ -793,6 +826,12 @@ public:
         nes_emulate_init(path.c_str(), width, height);
         printf("nes_emulate_init done\n");
 
+        // Initialize default song (starting song from NSF header)
+        if (!nsf_init_song(_nsf_header.starting_song)) {
+            printf("NSF: Failed to initialize starting song %d\n", _nsf_header.starting_song);
+            return -1;
+        }
+
         //_lines = nes_emulate_frame(true);   // first frame!
         return 0;
     }
@@ -800,7 +839,10 @@ public:
     virtual int update()
     {
         if (_nofrendo_rom)
-            _lines = nes_emulate_frame_audio(true);
+            _lines = NULL;
+            //TODO: call PLAY section
+            nes_renderframe_audio();
+            //nes_emulate_frame_audio(true);
         return 0;
     }
 
@@ -830,7 +872,23 @@ public:
     virtual const uint32_t* rgb_palette() { return 0; };
     virtual int info(const std::string& file, std::vector<std::string>& strs) { return -1; };
     virtual void hid(const uint8_t* d, int len) {};
-    virtual void key(int keycode, int pressed, int mods){};
+    virtual void key(int keycode, int pressed, int mods)
+    {
+        if (!pressed) return; // キー押下時のみ処理
+        
+        switch (keycode) {
+            // NSF song selection (number keys 1-5)
+            case 30: nsf_change_song(1); break; // 1 key
+            case 31: nsf_change_song(2); break; // 2 key  
+            case 32: nsf_change_song(3); break; // 3 key
+            case 33: nsf_change_song(4); break; // 4 key
+            case 34: nsf_change_song(5); break; // 5 key
+                
+            default:
+                printf("NSF: Key %d pressed (use 1-5 for song selection)\n", keycode);
+                break;
+        }
+    }
 };
 
 Emu* NewNsfplayer(int ntsc)

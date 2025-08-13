@@ -33,9 +33,9 @@
 #define VIDEO_STANDARD NTSC
 
 Emu* _emu = 0;
+int _sample_count = -1;
 uint32_t _frame_time = 0;
-uint32_t _drawn = 1;
-bool _inited = false;
+// uint32_t _drawn = 1;
 
 using namespace std;
 
@@ -60,15 +60,15 @@ string to_string(int i)
 }
 
 
-void update_av()
+void update_audio()
 {
     _emu->update();
 
     int16_t abuffer[313*2];
     int format = _emu->audio_format >> 8;
-    int sample_count = _emu->frame_sample_count();
-    sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
-    audio_write_16(abuffer,sample_count,format);
+    _sample_count = _emu->frame_sample_count();
+    _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
+    audio_write_16(abuffer,_sample_count,format);
 }
 
 // dual core mode runs emulator on comms core
@@ -87,7 +87,7 @@ void emu_task(void* arg)
         vTaskSuspend(NULL);  // Suspend this task to prevent crashes
         return;
     }
-    _drawn = _frame_counter;
+    //_drawn = _frame_counter;
 
     while(true) //emu loop
     {
@@ -95,10 +95,10 @@ void emu_task(void* arg)
       video_sync();
       // Draw a frame, update sound, process hid events
       uint32_t t = xthal_get_ccount();
-      update_av();
+      update_audio();
       _frame_time = xthal_get_ccount() - t;
-      _lines = _emu->video_buffer();
-      _drawn++;
+      //_lines = _emu->video_buffer();
+      //_drawn++;
     }
 }
 
@@ -123,6 +123,8 @@ esp_err_t mount_filesystem()
 #ifdef PERF
 void perf()
 {
+  //TODO: update for audio
+  #if 0
   static int _next = 0;
   if (_drawn >= _next) {
     float elapsed_us = 120*1000000/(_emu->standard ? 60 : 50);
@@ -135,6 +137,7 @@ void perf()
     _blit_ticks_max = 0;
     _isr_us = 0;
   }
+  #endif
 }
 #else
 void perf(){};
@@ -153,42 +156,19 @@ extern "C" void app_main(void)
   
   while(true){
     // start the video after emu has started
-    if (!_inited) {
-      if (_lines) {
-        printf("video_init\n");
-        video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
-        _inited = true;
-        break;
-      } else {
-        vTaskDelay(1);
-      }
+    if (_sample_count >= 0) { 
+      printf("audio/video_init\n");
+      video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
+      break;
     }
+    vTaskDelay(1);
   }
-  printf("video_init done\n");
+  printf("emulator gets started. video_init done\n");
+
+  //TODO: exec mruby here
 
   while(true){
-    // 擬似的にキー入力を与える（テスト用）- 実時間ベース
-    #if 1
-    static uint32_t last_key_time = 0;
-    static bool key_pressed = false;
-    uint32_t current_time = esp_timer_get_time() / 1000; // ミリ秒単位
-    
-    if (current_time - last_key_time >= 2000) {  // 2秒間隔
-        if (!key_pressed) {
-            _emu->key(40, 1, 0);  // Startボタン（Return）押下
-            //printf("Simulated Start button press at %ld ms\n", current_time);
-            key_pressed = true;
-        } else {
-            _emu->key(40, 0, 0);  // Startボタン離す
-            //printf("Simulated Start button release at %ld ms\n", current_time);
-            key_pressed = false;
-        }
-        last_key_time = current_time;
-    }
-    #endif
-    
     vTaskDelay(100);
-
     // Dump some stats
     perf();
   }
