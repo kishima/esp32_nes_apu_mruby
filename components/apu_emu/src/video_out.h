@@ -938,20 +938,10 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
 extern "C"
 void IRAM_ATTR audio_isr()
 {
-    if (!_lines)
-        return;
-
     ISR_BEGIN();
+
     uint8_t s = _audio_r < _audio_w ? _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)] : 0x20;
     audio_sample(s);
-    //audio_sample(_sin64[_x++ & 0x3F]);
-
-    int i = _line_counter++;
-
-    if (_line_counter == _line_count) {
-        _line_counter = 0;                      // frame is done
-        _frame_counter++;
-    }
 
     ISR_END();
 
