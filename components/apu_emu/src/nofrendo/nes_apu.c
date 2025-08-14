@@ -932,7 +932,7 @@ void apu_force_pulse1_test_tone()
       apu.rectangle[0].output_vol = 15 << 8;  // スケール調整
       
       /* より高い周波数でテスト (440Hz程度) */
-      apu.rectangle[0].freq = 253;
+      apu.rectangle[0].freq = 353;
       apu.rectangle[0].accum = 0.0f;
       apu.rectangle[0].adder = 0;
       apu.rectangle[0].duty_flip = 2;
@@ -970,7 +970,7 @@ void apu_process(void *buffer, int num_samples)
       buf8 = (uint8 *) buffer;
 
       /* テスト用: PULSE1チャンネルで440Hzトーン出力 */
-      apu_force_pulse1_test_tone();
+      //apu_force_pulse1_test_tone();
 
       int sample_count = 0;
       while (num_samples--)
