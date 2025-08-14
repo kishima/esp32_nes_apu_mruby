@@ -63,11 +63,24 @@ string to_string(int i)
 
 void update_audio()
 {
-    _emu->update();  // コメントアウト
+    // 安全性チェック：エミュレータポインタの検証
+    if (!_emu) {
+        printf("[AUDIO_ERROR] Emulator pointer is NULL in update_audio()\n");
+        return;
+    }
+    
+    // NSFプレイヤーのupdate()実行 - 内部でAPU処理も行う
+    _emu->update();  // PLAYルーチンを実行
 
     int16_t abuffer[313*2];
     int format = _emu->audio_format >> 8;
     _sample_count = _emu->frame_sample_count();
+    
+    // サンプル数の検証
+    if (_sample_count <= 0 || _sample_count > 313*2) {
+        printf("[AUDIO_ERROR] Invalid sample count: %d\n", _sample_count);
+        return;
+    }
     
 #if 0
     // ランダムなテスト音波形を生成
@@ -75,9 +88,12 @@ void update_audio()
         // -10000 から 10000 の範囲でランダムな値を生成
         abuffer[i] = (rand() % 20001) - 10000;
     }
+#else
+
+    _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
+
 #endif
 
-    _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));  // コメントアウト
     
     // オーディオデバッグ：60フレームごとにチェック
     static uint32_t audio_frame_count = 0;

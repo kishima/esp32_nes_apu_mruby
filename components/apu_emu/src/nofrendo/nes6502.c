@@ -709,10 +709,26 @@
 
 #define JSR() \
 { \
+   static int jsr_count = 0; \
+   uint32 target_addr; \
+   uint32 return_addr; \
+   if (jsr_count < 5) { \
+       printf("[JSR_DEBUG] JSR: PC=$%04X, SP=$%02X\n", PC, S); \
+   } \
    PC++; \
-   PUSH(PC >> 8); \
-   PUSH(PC & 0xFF); \
-   JUMP(PC - 1); \
+   return_addr = PC + 1; \
+   target_addr = bank_readword(PC - 1); \
+   if (jsr_count < 5) { \
+       printf("[JSR_DEBUG] Target=$%04X, Return=$%04X\n", target_addr, return_addr); \
+       printf("[JSR_DEBUG] Stack before: $01%02X=$%02X, $01%02X=$%02X\n", S, stack[S], S-1, stack[S-1]); \
+   } \
+   PUSH(return_addr >> 8); \
+   PUSH(return_addr & 0xFF); \
+   if (jsr_count < 5) { \
+       printf("[JSR_DEBUG] Stack after: $01%02X=$%02X, $01%02X=$%02X, SP=$%02X\n", S+2, stack[S+2], S+1, stack[S+1], S); \
+       jsr_count++; \
+   } \
+   PC = target_addr; \
    ADD_CYCLES(6); \
 }
 
@@ -1191,7 +1207,23 @@ INLINE uint32 bank_readword(register uint32 address)
 
 INLINE uint8 bank_readbyte(register uint32 address)
 {
-   return cpu.mem_page[address >> NES6502_BANKSHIFT][address & NES6502_BANKMASK];
+   static int debug_read_count = 0;
+   uint8 page_idx = address >> NES6502_BANKSHIFT;
+   uint8 value;
+   
+   if (!cpu.mem_page[page_idx]) {
+       printf("[MEMORY_ERROR] bank_readbyte: No page for address $%04X (page %02X)\n", address, page_idx);
+       return 0;
+   }
+   
+   value = cpu.mem_page[page_idx][address & NES6502_BANKMASK];
+   
+   if (debug_read_count < 5) {  // メモリデバッグを5回に制限
+       printf("[MEMORY_DEBUG] bank_readbyte: addr=$%04X, page=%02X, value=$%02X\n", address, page_idx, value);
+       debug_read_count++;
+   }
+   
+   return value;
 }
 
 INLINE void bank_writebyte(register uint32 address, register uint8 value)
@@ -1272,6 +1304,14 @@ void nes6502_setcontext(nes6502_context *context)
       if (NULL == cpu.mem_page[loop])
          cpu.mem_page[loop] = null_page;
    }
+   
+   /* デバッグ: メモリページ8のセットアップ状態を確認 */
+   static int debug_setcontext_count = 0;
+   if (debug_setcontext_count < 10) {
+      printf("[SETCONTEXT_DEBUG] mem_page[8]=%p, null_page=%p\n", 
+             cpu.mem_page[8], null_page);
+      debug_setcontext_count++;
+   }
 
    ram = cpu.mem_page[0];  /* quick zero-page/RAM references */
    stack = ram + STACK_OFFSET;
@@ -1349,7 +1389,16 @@ uint32 nes6502_getcycles(bool reset_flag)
 #define  OPCODE_END \
    if (remaining_cycles <= 0) \
       goto end_execute; \
-   goto *opcode_table[bank_readbyte(PC++)];
+   { \
+      static int opcode_fetch_count = 0; \
+      uint8 next_opcode = bank_readbyte(PC); \
+      if (opcode_fetch_count < 20 && PC >= 0x8000 && PC < 0x8100) { \
+         printf("[OPCODE_FETCH] PC=$%04X, opcode=$%02X, remaining_cycles=%d\n", PC, next_opcode, remaining_cycles); \
+         opcode_fetch_count++; \
+      } \
+      PC++; \
+      goto *opcode_table[next_opcode]; \
+   }
 
 #endif /* !NES6502_DISASM */
 
@@ -1371,6 +1420,10 @@ int nes6502_execute(int timeslice_cycles)
    uint32 temp, addr; /* for macros */
    uint8 btemp, baddr; /* for macros */
    uint8 data;
+   
+   static int debug_exec_count = 0;
+   bool show_debug = (debug_exec_count < 3);  // 最初の3回だけ詳細ログ
+   debug_exec_count++;
 
    /* flags */
    uint8 n_flag, v_flag, b_flag;
@@ -1423,6 +1476,27 @@ int nes6502_execute(int timeslice_cycles)
    remaining_cycles = timeslice_cycles;
 
    GET_GLOBAL_REGS();
+   
+   if (show_debug) {
+       printf("[CPU_DEBUG] nes6502_execute: start PC=$%04X, cycles=%d\n", PC, timeslice_cycles);
+       printf("[CPU_DEBUG] Initial state: A=$%02X X=$%02X Y=$%02X S=$%02X\n", A, X, Y, S);
+       
+       // メモリページの確認
+       if (cpu.mem_page[PC >> NES6502_BANKSHIFT]) {
+           printf("[CPU_DEBUG] Memory page for PC available: 0x%08lX\n", 
+                  (unsigned long)cpu.mem_page[PC >> NES6502_BANKSHIFT]);
+           
+           // PC位置の最初の命令を確認
+           uint8 opcode = bank_readbyte(PC);
+           printf("[CPU_DEBUG] First opcode at PC=$%04X: $%02X\n", PC, opcode);
+           if (opcode == 0x20) {
+               uint16 target = bank_readword(PC + 1);
+               printf("[CPU_DEBUG] JSR target: $%04X\n", target);
+           }
+       } else {
+           printf("[CPU_DEBUG] ERROR: No memory page for PC=$%04X\n", PC);
+       }
+   }
 
    /* check for DMA cycle burning */
    if (cpu.burn_cycles && remaining_cycles > 0)
@@ -1442,8 +1516,17 @@ int nes6502_execute(int timeslice_cycles)
    }
 
 #ifdef NES6502_JUMPTABLE
-   /* fetch first instruction */
-   OPCODE_END
+   /* fetch first instruction - 初期命令フェッチではPCを事前にインクリメントしない */
+   {
+      static int first_fetch_count = 0;
+      uint8 first_opcode = bank_readbyte(PC);
+      if (first_fetch_count < 5 && PC >= 0x8000 && PC < 0x8100) {
+         printf("[FIRST_FETCH] PC=$%04X, opcode=$%02X, remaining_cycles=%d\n", PC, first_opcode, remaining_cycles);
+         first_fetch_count++;
+      }
+      PC++; // 読み取り後にPCをインクリメント
+      goto *opcode_table[first_opcode];
+   }
 
 #else /* !NES6502_JUMPTABLE */
 
@@ -1614,6 +1697,11 @@ int nes6502_execute(int timeslice_cycles)
          OPCODE_END
       
       OPCODE_BEGIN(20)  /* JSR $nnnn */
+         static int op20_count = 0;
+         if (op20_count < 10) {
+             printf("[OP20_DEBUG] Executing JSR instruction (count=%d) at PC=$%04X\n", op20_count, PC-1);
+             op20_count++;
+         }
          JSR();
          OPCODE_END
 
@@ -2388,6 +2476,24 @@ int nes6502_execute(int timeslice_cycles)
 
 #ifdef NES6502_JUMPTABLE
 end_execute:
+   if (show_debug) {
+       printf("[CPU_DEBUG] nes6502_execute: end PC=$%04X, executed=%d cycles\n", 
+              PC, cpu.total_cycles - old_cycles);
+       printf("[CPU_DEBUG] Final state: A=$%02X X=$%02X Y=$%02X S=$%02X\n", A, X, Y, S);
+   }
+   
+   /* 異常なCPU状態を検出（デバッグ用） */
+   if (PC == 0x0000) {
+       printf("[CPU_ERROR] PC became $0000 - this is abnormal!\n");
+       printf("[CPU_ERROR] Final registers: A=$%02X X=$%02X Y=$%02X S=$%02X\n", 
+              A, X, Y, S);
+       printf("[CPU_ERROR] Executed %d cycles, remaining=%d\n", 
+              cpu.total_cycles - old_cycles, remaining_cycles);
+   }
+   
+   if (S < 0x80) {
+       printf("[CPU_WARNING] Stack pointer unusually low: SP=$%02X\n", S);
+   }
 
 #else /* !NES6502_JUMPTABLE */
       }
