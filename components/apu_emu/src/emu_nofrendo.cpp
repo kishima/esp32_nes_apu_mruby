@@ -907,6 +907,7 @@ public:
         // デバッグログを減らしてパフォーマンスを向上
         static uint32_t play_count = 0;
         bool show_debug = (play_count % 60 == 0);  // 1秒ごとに表示
+        show_debug = false;
         
         if (show_debug) {
             nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;

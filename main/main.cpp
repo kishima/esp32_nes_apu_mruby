@@ -62,27 +62,45 @@ string to_string(int i)
 
 void update_audio()
 {
-    _emu->update();
+    // _emu->update();  // コメントアウト
 
     int16_t abuffer[313*2];
     int format = _emu->audio_format >> 8;
-    //_sample_count = _emu->frame_sample_count();
-    _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
+    _sample_count = _emu->frame_sample_count();
+    
+    // 簡単なテスト音波形を生成
+    static int test_counter = 0;
+    for (int i = 0; i < _sample_count; i++) {
+        // 低い周波数の矩形波テスト (約100Hz)
+        if ((test_counter / 78) % 2 == 0) {  // 15700Hz / 78 / 2 ≈ 100Hz
+            abuffer[i] = 10000;   // 正の値
+        } else {
+            abuffer[i] = -10000;  // 負の値
+        }
+        test_counter++;
+    }
+    printf("TEST: generating square wave, counter=%d\n", test_counter);
+    
+    // _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));  // コメントアウト
     
     // オーディオデバッグ：60フレームごとにチェック
     static uint32_t audio_frame_count = 0;
     if (audio_frame_count % 60 == 0) {
         // サンプル数と最初のいくつかのサンプル値を表示
         printf("AUDIO[%lu]: samples=%d, format=%d\n", audio_frame_count, _sample_count, format);
+        
         if (_sample_count > 0) {
-            printf("AUDIO: first 8 samples: %d %d %d %d %d %d %d %d\n", 
-                   abuffer[0], abuffer[1], abuffer[2], abuffer[3], 
-                   abuffer[4], abuffer[5], abuffer[6], abuffer[7]);
+            printf("AUDIO: first 8 samples: ");
+            for (int i = 0; i < 8 && i < _sample_count; i++) {
+                printf("0x%04X ", (uint16_t)abuffer[i]);
+            }
+            printf("\n");
         }
     }
     audio_frame_count++;
     
-    audio_write_16(abuffer,_sample_count,format);
+    printf("TEST: calling audio_write_16 with samples=%d, format=%d\n", _sample_count, format);
+    audio_write_16(abuffer,_sample_count,1);  // 強制的にモノラル(1チャンネル)に設定
 }
 
 // dual core mode runs emulator on comms core
@@ -133,9 +151,9 @@ void emu_task(void* arg)
       if (sleep_time_us > 1000) {
         // Sleep if we have more than 1ms left
         vTaskDelay(pdMS_TO_TICKS(sleep_time_us / 1000));
-      } else if (sleep_time_us < -target_frame_time_us) {
+      } else if (sleep_time_us < 0) {
         // If we're more than one frame behind, reset timing
-        printf("Frame timing reset - processing took too long\n");
+        printf("Frame timing reset - processing took too long %lld\n",sleep_time_us);
         next_frame_time = esp_timer_get_time();
       }
       

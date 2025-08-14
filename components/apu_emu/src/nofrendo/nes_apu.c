@@ -915,46 +915,33 @@ void dump_apu(){
 
 }
 
-/* PULSE1チャンネルで440Hz音を出すデバッグ関数 */
+/* 簡素化されたPULSE1テスト関数 */
 void apu_force_pulse1_test_tone()
 {
    static bool test_tone_initialized = false;
    
    if (!test_tone_initialized) {
-      printf("APU: Setting up PULSE1 test tone (440Hz)\n");
+      printf("APU: Simple PULSE1 test tone setup\n");
       
-      /* PULSE1チャンネルの設定 */
+      /* 最小限の設定 */
       apu.rectangle[0].enabled = true;
-      apu.rectangle[0].volume = 15;          // 最大音量
-      apu.rectangle[0].fixed_envelope = true;  // 固定エンベロープ
-      apu.rectangle[0].holdnote = true;      // ノート継続
-      apu.rectangle[0].duty_flip = 2;        // 50%デューティサイクル
+      apu.rectangle[0].volume = 15;
+      apu.rectangle[0].fixed_envelope = true;
+      apu.rectangle[0].holdnote = true;
+      apu.rectangle[0].vbl_length = 255;
+      apu.rectangle[0].output_vol = 15 << 8;  // スケール調整
       
-      /* 440Hz設定 (NTSCの場合) */
-      /* NES APU formula: freq = 1789773 / (16 * (timer + 1)) */
-      /* 440Hz -> timer = 1789773 / (16 * 440) - 1 ≈ 253 */
-      int timer_val = 253;
-      apu.rectangle[0].freq = timer_val;
+      /* より高い周波数でテスト (440Hz程度) */
+      apu.rectangle[0].freq = 253;
+      apu.rectangle[0].accum = 0.0f;
+      apu.rectangle[0].adder = 0;
+      apu.rectangle[0].duty_flip = 2;
       
-      /* レジスタ値も直接設定 */
-      apu.rectangle[0].regs[0] = 0xBF;       // Volume=15, Envelope=0, HoldNote=1, Duty=10
-      apu.rectangle[0].regs[1] = 0x00;       // Sweep disabled
-      apu.rectangle[0].regs[2] = timer_val & 0xFF;      // Timer low
-      apu.rectangle[0].regs[3] = (timer_val >> 8) & 0x07;  // Timer high + length counter
+      /* APU設定 */
+      apu.enable_reg = 0x01;
+      apu.mix_enable = 0x01;
       
-      /* APU全体の設定 */
-      apu.enable_reg = 0x01;        // PULSE1のみ有効
-      apu.mix_enable = 0x01;        // PULSE1のみミックス
-      
-      /* 他のチャンネルを無効化 */
-      apu.rectangle[1].enabled = false;
-      apu.triangle.enabled = false;
-      apu.noise.enabled = false;
-      apu.dmc.enabled = false;
-      
-      printf("APU: PULSE1 test tone configured - freq=%d, vol=%d, duty=%d\n", 
-             apu.rectangle[0].freq, apu.rectangle[0].volume, apu.rectangle[0].duty_flip);
-      
+      printf("APU: Simple test tone configured\n");
       test_tone_initialized = true;
    }
 }
@@ -967,12 +954,9 @@ void apu_process(void *buffer, int num_samples)
    int16 *buf16;
    uint8 *buf8;
    
-   /* テスト用: PULSE1チャンネルで440Hzトーン出力 */
-   apu_force_pulse1_test_tone();
-   
-   /* APU構造体デバッグ情報 - 60フレームごとに表示 */
-   if (debug_frame_count % 60 == 0 && buffer != NULL) {
-      dump_apu();
+   /* APU構造体デバッグ情報 - 300フレームごとに表示 */
+   if (debug_frame_count % 300 == 0 && buffer != NULL) {
+      printf("apu_process: num_samples=%d\n", num_samples);
    }
 
    debug_frame_count++;
@@ -985,12 +969,17 @@ void apu_process(void *buffer, int num_samples)
       buf16 = (int16 *) buffer;
       buf8 = (uint8 *) buffer;
 
+      /* テスト用: PULSE1チャンネルで440Hzトーン出力 */
+      apu_force_pulse1_test_tone();
+
+      int sample_count = 0;
       while (num_samples--)
       {
          int32 next_sample, accum = 0;
 
-         if (apu.mix_enable & 0x01)
+         if (apu.mix_enable & 0x01) {
             accum += apu_rectangle_0();
+         }
          if (apu.mix_enable & 0x02)
             accum += apu_rectangle_1();
          if (apu.mix_enable & 0x04)
@@ -1001,6 +990,12 @@ void apu_process(void *buffer, int num_samples)
             accum += apu_dmc();
          if (apu.ext && (apu.mix_enable & 0x20))
             accum += apu.ext->process();
+         
+         sample_count++;
+         if (sample_count > 300) {
+            printf("apu_process: ERROR - too many samples processed!\n");
+            break;
+         }
 
          /* do any filtering */
          if (APU_FILTER_NONE != apu.filter_type)
@@ -1027,6 +1022,7 @@ void apu_process(void *buffer, int num_samples)
          else
             *buf8++ = (accum >> 8) ^ 0x80;
       }
+      
    }
 }
 
