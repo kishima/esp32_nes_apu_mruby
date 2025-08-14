@@ -26,6 +26,10 @@
 #include "soc/rtc.h"
 
 #define PERF  // some stats about where we spend our time
+
+// デバッグログ制御フラグ
+#define AUDIO_DEBUG 0  // オーディオフレーム詳細ログ
+
 #include "emu.h"
 #include "video_out.h"
 
@@ -95,21 +99,23 @@ void update_audio()
 #endif
 
     
-    // オーディオデバッグ：60フレームごとにチェック
-    static uint32_t audio_frame_count = 0;
-      if (audio_frame_count % 60 == 0) {
-        // サンプル数と最初のいくつかのサンプル値を表示
-        printf("AUDIO[%lu]: samples=%d, format=%d\n", audio_frame_count, _sample_count, format);
-        
-        if (_sample_count > 0) {
-            printf("AUDIO: first 8 samples: ");
-            for (int i = 0; i < 8 && i < _sample_count; i++) {
-                printf("0x%04X ", (uint16_t)abuffer[i]);
+    if (AUDIO_DEBUG) {
+        // オーディオデバッグ：60フレームごとにチェック
+        static uint32_t audio_frame_count = 0;
+        if (audio_frame_count % 60 == 0) {
+            // サンプル数と最初のいくつかのサンプル値を表示
+            printf("AUDIO[%lu]: samples=%d, format=%d\n", audio_frame_count, _sample_count, format);
+            
+            if (_sample_count > 0) {
+                printf("AUDIO: first 8 samples: ");
+                for (int i = 0; i < 8 && i < _sample_count; i++) {
+                    printf("0x%04X ", (uint16_t)abuffer[i]);
+                }
+                printf("\n");
             }
-            printf("\n");
         }
+        audio_frame_count++;
     }
-    audio_frame_count++;
     
     //printf("TEST: calling audio_write_16 with samples=%d, format=%d\n", _sample_count, format);
     audio_write_16(abuffer,_sample_count,1);  // 強制的にモノラル(1チャンネル)に設定

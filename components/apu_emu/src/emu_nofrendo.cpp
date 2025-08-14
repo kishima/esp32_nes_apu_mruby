@@ -635,9 +635,15 @@ class EmuNsfPlay : public Emu {
     bool _play_setup_done;
     int _nsf_size;
     
+    // デバッグログ制御フラグ
+    static constexpr bool NSF_DEBUG = false;          // NSF実行詳細ログ
+    static constexpr bool MEMORY_DEBUG = false;       // メモリアクセスログ  
+    static constexpr bool PLAY_DEBUG = false;         // PLAYルーチンログ
+    static constexpr bool INIT_DEBUG = false;         // 初期化ログ
+    
     // APUメモリページの手動設定
     void nsf_setup_apu_memory_page() {
-        printf("NSF: Setting up APU memory page at $4000-$40FF\n");
+        if (NSF_DEBUG) printf("NSF: Setting up APU memory page at $4000-$40FF\n");
         
         // APUレジスタ用のメモリ領域を確保
         static uint8_t apu_memory_page[256];
@@ -647,7 +653,7 @@ class EmuNsfPlay : public Emu {
         nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
         if (cpu_ctx) {
             cpu_ctx->mem_page[0x40] = apu_memory_page;
-            printf("NSF: APU memory page set at %p\n", apu_memory_page);
+            if (NSF_DEBUG) printf("NSF: APU memory page set at %p\n", apu_memory_page);
         } else {
             printf("NSF: Failed to get CPU context for memory page setup\n");
         }
@@ -655,7 +661,7 @@ class EmuNsfPlay : public Emu {
     
     // NSF ROMメモリページの手動設定
     void nsf_setup_rom_memory_page() {
-        printf("NSF: Setting up NSF ROM memory mapping\n");
+        if (MEMORY_DEBUG) printf("NSF: Setting up NSF ROM memory mapping\n");
         
         if (!_nofrendo_rom) {
             printf("NSF: No NSF ROM data available\n");
@@ -666,12 +672,14 @@ class EmuNsfPlay : public Emu {
         uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
         size_t nsf_data_size = _nsf_size - sizeof(NSFHeader);
         
-        printf("NSF: NSF data size: %zu bytes, header size: %zu bytes\n", nsf_data_size, sizeof(NSFHeader));
-        printf("NSF: First 16 bytes at $8000: ");
-        for (int i = 0; i < 16 && i < nsf_data_size; i++) {
-            printf("%02X ", nsf_data[i]);
+        if (MEMORY_DEBUG) {
+            printf("NSF: NSF data size: %zu bytes, header size: %zu bytes\n", nsf_data_size, sizeof(NSFHeader));
+            printf("NSF: First 16 bytes at $8000: ");
+            for (int i = 0; i < 16 && i < nsf_data_size; i++) {
+                printf("%02X ", nsf_data[i]);
+            }
+            printf("\n");
         }
-        printf("\n");
         
         // CPU contextのメモリページテーブルにNSFデータをマップ
         nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
@@ -708,18 +716,20 @@ class EmuNsfPlay : public Emu {
             cpu_ctx->mem_page[0xE000 >> NES6502_BANKSHIFT] = nsf_data; // $E000-$EFFF
             cpu_ctx->mem_page[0xF000 >> NES6502_BANKSHIFT] = nsf_data; // $F000-$FFFF
             
-            printf("NSF: ROM mapped from $8000-$FFFF at %p (size: %zu bytes)\n", nsf_data, nsf_data_size);
+            if (MEMORY_DEBUG) printf("NSF: ROM mapped from $8000-$FFFF at %p (size: %zu bytes)\n", nsf_data, nsf_data_size);
             
-            // メモリページ設定直後の状態を確認
-            printf("NSF: Verifying memory page setup...\n");
-            for (int i = 8; i <= 15; i++) {
-                printf("NSF: mem_page[%d] ($%04X) = %p\n", i, i << NES6502_BANKSHIFT, cpu_ctx->mem_page[i]);
+            if (MEMORY_DEBUG) {
+                // メモリページ設定直後の状態を確認
+                printf("NSF: Verifying memory page setup...\n");
+                for (int i = 8; i <= 15; i++) {
+                    printf("NSF: mem_page[%d] ($%04X) = %p\n", i, i << NES6502_BANKSHIFT, cpu_ctx->mem_page[i]);
+                }
+                
+                // グローバルCPUの状態も確認
+                nes6502_context global_ctx;
+                nes6502_getcontext(&global_ctx);
+                printf("NSF: Global CPU mem_page[8] ($8000) = %p\n", global_ctx.mem_page[8]);
             }
-            
-            // グローバルCPUの状態も確認
-            nes6502_context global_ctx;
-            nes6502_getcontext(&global_ctx);
-            printf("NSF: Global CPU mem_page[8] ($8000) = %p\n", global_ctx.mem_page[8]);
         } else {
             printf("NSF: Failed to get CPU context for ROM mapping\n");
         }
@@ -727,7 +737,7 @@ class EmuNsfPlay : public Emu {
     
     // NSF専用APUハンドラ設定
     bool nsf_setup_apu_handlers() {
-        printf("NSF: Setting up APU memory handlers for $4000-$4015\n");
+        if (NSF_DEBUG) printf("NSF: Setting up APU memory handlers for $4000-$4015\n");
         
         // Get NES context
         nes_t* nes = nes_getcontextptr();
@@ -736,12 +746,16 @@ class EmuNsfPlay : public Emu {
             return false;
         }
         
-        // Debug current memory handler status
-        printf("NSF: Checking current memory handlers...\n");
+        if (NSF_DEBUG) {
+            // Debug current memory handler status
+            printf("NSF: Checking current memory handlers...\n");
+        }
         bool apu_handler_found = false;
         for (int i = 0; i < 16 && nes->readhandler[i].read_func; i++) {
-            printf("NSF: Read handler %d: $%04X-$%04X\n", i, 
-                   nes->readhandler[i].min_range, nes->readhandler[i].max_range);
+            if (NSF_DEBUG) {
+                printf("NSF: Read handler %d: $%04X-$%04X\n", i, 
+                       nes->readhandler[i].min_range, nes->readhandler[i].max_range);
+            }
             if (nes->readhandler[i].min_range == 0x4000 && 
                 nes->readhandler[i].max_range == 0x4015) {
                 apu_handler_found = true;
@@ -749,7 +763,7 @@ class EmuNsfPlay : public Emu {
         }
         
         if (apu_handler_found) {
-            printf("NSF: APU handlers already set up\n");
+            if (NSF_DEBUG) printf("NSF: APU handlers already set up\n");
             return true;
         }
         
@@ -939,13 +953,13 @@ public:
     // Execute NSF PLAY routine safely without full NES frame rendering
     void nsf_execute_play_routine() {
         if (!_nsf_initialized) {
-            printf("[PLAY_DEBUG] nsf_execute_play_routine: NSF not initialized\n");
+            if (PLAY_DEBUG) printf("[PLAY_DEBUG] nsf_execute_play_routine: NSF not initialized\n");
             return;
         }
         
         static uint32_t total_calls = 0;
         total_calls++;
-        if (total_calls <= 5 || total_calls % 60 == 0) {
+        if (PLAY_DEBUG && (total_calls <= 5 || total_calls % 60 == 0)) {
             printf("[PLAY_DEBUG] nsf_execute_play_routine: call #%lu\n", total_calls);
         }
                 // 毎回PLAYルーチンのためにCPU状態を再設定
@@ -1048,7 +1062,7 @@ public:
         } else {
             // 通常の実行
             int play_cycles = 500;
-            if (total_calls <= 5) {
+            if (PLAY_DEBUG && total_calls <= 5) {
                 printf("[PLAY_DEBUG] Executing PLAY with %d cycles\n", play_cycles);
                 // CPU状態を確認
                 nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
@@ -1110,9 +1124,19 @@ public:
                         printf("[PLAY_DEBUG] CPU context synced to global cpu variable\n");
                     }
                 }
+            } else {
+                // メモリページ再設定（デバッグなし版）
+                if (_nofrendo_rom) {
+                    nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+                    if (cpu_ctx) {
+                        uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
+                        cpu_ctx->mem_page[8] = nsf_data;
+                        nes6502_setcontext(cpu_ctx);
+                    }
+                }
             }
             executed = nes6502_execute(play_cycles);
-            if (total_calls <= 5) {
+            if (PLAY_DEBUG && total_calls <= 5) {
                 printf("[PLAY_DEBUG] PLAY executed %d cycles\n", executed);
                 // CPU状態を確認
                 nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
@@ -1127,7 +1151,7 @@ public:
         
         // NSFのAPUチャンネルを強制的に有効化（音声出力を確実にするため）
         if (play_count <= 5) {
-            printf("[PLAY_DEBUG] Forcing APU channels enable for NSF playback\n");
+            if (PLAY_DEBUG) printf("[PLAY_DEBUG] Forcing APU channels enable for NSF playback\n");
             
             // PULSE1チャンネルの基本設定（テスト音生成）
             apu_write(0x4000, 0x8F);  // Duty 50%, Length counter halt, Constant volume, Volume=15
@@ -1140,8 +1164,10 @@ public:
             uint8_t channel_enable = 0x1F;  // 全チャンネル有効（Pulse1, Pulse2, Triangle, Noise, DMC）
             apu_write(0x4015, channel_enable);
             
-            printf("[PLAY_DEBUG] APU channels forcibly enabled: $4015 = $%02X\n", channel_enable);
-            printf("[PLAY_DEBUG] PULSE1 configured for test tone generation\n");
+            if (PLAY_DEBUG) {
+                printf("[PLAY_DEBUG] APU channels forcibly enabled: $4015 = $%02X\n", channel_enable);
+                printf("[PLAY_DEBUG] PULSE1 configured for test tone generation\n");
+            }
         }
         
         if (show_debug) {

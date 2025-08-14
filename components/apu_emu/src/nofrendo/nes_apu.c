@@ -31,7 +31,12 @@
 #ifdef ESP_PLATFORM
 #include "esp_timer.h"
 #endif
- 
+
+// APUデバッグログ制御フラグ
+#define APU_DEBUG       0    // APU処理詳細ログ
+#define CHANNEL_DEBUG   0    // チャンネル状態ログ
+#define SAMPLE_DEBUG    0    // サンプル生成ログ
+#define APU_WRITE_DEBUG 0    // APU書き込みログ
 
 #define  APU_OVERSAMPLE
 #define  APU_VOLUME_DECAY(x)  ((x) -= ((x) >> 7))
@@ -191,7 +196,7 @@ static int32 apu_rectangle_##ch(void) \
    APU_VOLUME_DECAY(apu.rectangle[ch].output_vol); \
 \
    /* デバッグ情報: チャンネル初期状態（最初の10回のみ） */ \
-   if (debug_call_count_##ch < 10) { \
+   if (CHANNEL_DEBUG && debug_call_count_##ch < 10) { \
       printf("PULSE%d[%d]: enabled=%d, vbl_length=%d, freq=%d, vol=%d\n", \
              ch+1, debug_call_count_##ch, apu.rectangle[ch].enabled, \
              apu.rectangle[ch].vbl_length, apu.rectangle[ch].freq, apu.rectangle[ch].volume); \
@@ -199,7 +204,7 @@ static int32 apu_rectangle_##ch(void) \
    } \
 \
    if (false == apu.rectangle[ch].enabled || 0 == apu.rectangle[ch].vbl_length) { \
-      if (debug_call_count_##ch < 10) { \
+      if (CHANNEL_DEBUG && debug_call_count_##ch < 10) { \
          printf("PULSE%d: disabled or vbl_length=0, returning %d\n", ch+1, APU_RECTANGLE_OUTPUT(ch)); \
       } \
       return APU_RECTANGLE_OUTPUT(ch); \
@@ -280,7 +285,7 @@ static int32 apu_rectangle_##ch(void) \
    apu.rectangle[ch].output_vol = total / num_times; \
    \
    /* デバッグ情報: 出力値（最初の10回のみ） */ \
-   if (debug_call_count_##ch <= 10) { \
+   if (SAMPLE_DEBUG && debug_call_count_##ch <= 10) { \
       printf("PULSE%d: output=%d, total=%d, num_times=%d, accum=%.3f\n", \
              ch+1, apu.rectangle[ch].output_vol, total, num_times, apu.rectangle[ch].accum); \
    } \
@@ -645,16 +650,18 @@ void apu_write(uint32 address, uint8 value)
    static uint32_t last_write_time = 0;
    uint32_t current_time = esp_timer_get_time() / 1000;  // ミリ秒
    
-   if (write_count < 50) {  // 最初の50回のみ表示
+   if (APU_WRITE_DEBUG && write_count < 50) {  // 最初の50回のみ表示
        printf("APU_WRITE[%d]: addr=$%04X, val=$%02X (time=%lu ms, delta=%lu ms)\n", 
               write_count, address, value, current_time, current_time - last_write_time);
    }
 #else
-   printf("APU_WRITE[%d]: addr=$%04X, val=$%02X\n", write_count, address, value);
+   if (APU_WRITE_DEBUG) {
+       printf("APU_WRITE[%d]: addr=$%04X, val=$%02X\n", write_count, address, value);
+   }
 #endif
    
-   // 特別なレジスタの場合は詳細情報を表示
-   if (address == 0x4015 && write_count < 50) {
+   // 特別なレジスタの場合は詳細情報を表示（チャンネル有効化は常に表示）
+   if (address == 0x4015) {
        printf("  -> CHANNEL ENABLE: Pulse1=%s, Pulse2=%s, Triangle=%s, Noise=%s, DMC=%s\n",
               (value & 0x01) ? "ON" : "OFF",
               (value & 0x02) ? "ON" : "OFF", 
@@ -1011,7 +1018,7 @@ void apu_process(void *buffer, int num_samples)
    uint8 *buf8;
    
    /* APU構造体デバッグ情報 - 300フレームごとに表示 */
-   if (debug_frame_count % 300 == 0 && buffer != NULL) {
+   if (APU_DEBUG && debug_frame_count % 300 == 0 && buffer != NULL) {
       printf("apu_process: num_samples=%d, mix_enable=0x%02X\n", num_samples, apu.mix_enable);
       printf("APU: enable_reg=0x%02X, cycle_rate=%.3f\n", apu.enable_reg, apu.cycle_rate);
    }
@@ -1065,7 +1072,7 @@ void apu_process(void *buffer, int num_samples)
          if (accum != 0) debug_nonzero_samples++;
          
          /* 最初の数サンプルで詳細デバッグ */
-         if (debug_frame_count < 5 && sample_count < 5) {
+         if (SAMPLE_DEBUG && debug_frame_count < 5 && sample_count < 5) {
             printf("Sample[%d]: p1=%d, p2=%d, tri=%d, noise=%d, dmc=%d, total=%d\n",
                    sample_count, pulse1_val, pulse2_val, triangle_val, noise_val, dmc_val, accum);
          }
@@ -1103,7 +1110,7 @@ void apu_process(void *buffer, int num_samples)
       }
       
       /* 300フレームごとに統計情報を表示 */
-      if (debug_frame_count % 300 == 0) {
+      if (APU_DEBUG && debug_frame_count % 300 == 0) {
          printf("APU Stats: avg_accum=%d, nonzero_samples=%d/%d (%.1f%%)\n",
                 sample_count > 0 ? debug_accum_sum / sample_count : 0,
                 debug_nonzero_samples, sample_count,
