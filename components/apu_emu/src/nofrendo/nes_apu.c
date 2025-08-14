@@ -611,6 +611,11 @@ static int32 apu_dmc(void)
 void apu_write(uint32 address, uint8 value)
 {  
    int chan;
+   
+   /* デバッグ: APU書き込みを表示 */
+   static int write_count = 0;
+   printf("APU_WRITE[%d]: addr=$%04X, val=$%02X\n", write_count, address, value);
+   write_count++;
 
    switch (address)
    {
