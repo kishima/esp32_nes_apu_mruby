@@ -66,7 +66,7 @@ void update_audio()
 
     int16_t abuffer[313*2];
     int format = _emu->audio_format >> 8;
-    _sample_count = _emu->frame_sample_count();
+    //_sample_count = _emu->frame_sample_count();
     _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
     
     // オーディオデバッグ：60フレームごとにチェック
@@ -116,7 +116,7 @@ void emu_task(void* arg)
       uint64_t frame_start = esp_timer_get_time();
       
       // NSF audio processing
-      //update_audio();
+      update_audio();
       
       uint64_t frame_end = esp_timer_get_time();
       uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);

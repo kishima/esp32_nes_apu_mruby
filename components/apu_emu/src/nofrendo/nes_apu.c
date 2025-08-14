@@ -872,12 +872,110 @@ uint8 apu_read(uint32 address)
       out = -0x8000; \
 }
 
+void dump_apu(){
+      printf("=== APU DEBUG ===\n");
+      printf("APU: enable_reg=0x%02X, mix_enable=0x%02X\n", apu.enable_reg, apu.mix_enable);
+      printf("APU: sample_rate=%d, sample_bits=%d, refresh_rate=%d\n", 
+             apu.sample_rate, apu.sample_bits, apu.refresh_rate);
+      
+      /* Pulse Channel 1 */
+      printf("PULSE1: enabled=%d, freq=%d, vol=%d, duty=%d\n",
+             apu.rectangle[0].enabled, apu.rectangle[0].freq, 
+             apu.rectangle[0].volume, apu.rectangle[0].duty_flip);
+      printf("PULSE1: regs=[%02X %02X %02X %02X]\n",
+             apu.rectangle[0].regs[0], apu.rectangle[0].regs[1],
+             apu.rectangle[0].regs[2], apu.rectangle[0].regs[3]);
+             
+      /* Pulse Channel 2 */
+      printf("PULSE2: enabled=%d, freq=%d, vol=%d, duty=%d\n",
+             apu.rectangle[1].enabled, apu.rectangle[1].freq,
+             apu.rectangle[1].volume, apu.rectangle[1].duty_flip);
+      printf("PULSE2: regs=[%02X %02X %02X %02X]\n",
+             apu.rectangle[1].regs[0], apu.rectangle[1].regs[1],
+             apu.rectangle[1].regs[2], apu.rectangle[1].regs[3]);
+             
+      /* Triangle Channel */
+      printf("TRIANGLE: enabled=%d, freq=%d, vol=%d\n",
+             apu.triangle.enabled, apu.triangle.freq, apu.triangle.output_vol);
+      printf("TRIANGLE: regs=[%02X %02X %02X]\n",
+             apu.triangle.regs[0], apu.triangle.regs[1], apu.triangle.regs[2]);
+             
+      /* Noise Channel */
+      printf("NOISE: enabled=%d, freq=%d, vol=%d\n",
+             apu.noise.enabled, apu.noise.freq, apu.noise.output_vol);
+      printf("NOISE: regs=[%02X %02X %02X]\n",
+             apu.noise.regs[0], apu.noise.regs[1], apu.noise.regs[2]);
+             
+      /* DMC Channel */
+      printf("DMC: enabled=%d, freq=%d, vol=%d\n",
+             apu.dmc.enabled, apu.dmc.freq, apu.dmc.output_vol);
+      printf("DMC: regs=[%02X %02X %02X %02X]\n",
+             apu.dmc.regs[0], apu.dmc.regs[1], apu.dmc.regs[2], apu.dmc.regs[3]);
+      printf("========================\n");
+
+}
+
+/* PULSE1チャンネルで440Hz音を出すデバッグ関数 */
+void apu_force_pulse1_test_tone()
+{
+   static bool test_tone_initialized = false;
+   
+   if (!test_tone_initialized) {
+      printf("APU: Setting up PULSE1 test tone (440Hz)\n");
+      
+      /* PULSE1チャンネルの設定 */
+      apu.rectangle[0].enabled = true;
+      apu.rectangle[0].volume = 15;          // 最大音量
+      apu.rectangle[0].fixed_envelope = true;  // 固定エンベロープ
+      apu.rectangle[0].holdnote = true;      // ノート継続
+      apu.rectangle[0].duty_flip = 2;        // 50%デューティサイクル
+      
+      /* 440Hz設定 (NTSCの場合) */
+      /* NES APU formula: freq = 1789773 / (16 * (timer + 1)) */
+      /* 440Hz -> timer = 1789773 / (16 * 440) - 1 ≈ 253 */
+      int timer_val = 253;
+      apu.rectangle[0].freq = timer_val;
+      
+      /* レジスタ値も直接設定 */
+      apu.rectangle[0].regs[0] = 0xBF;       // Volume=15, Envelope=0, HoldNote=1, Duty=10
+      apu.rectangle[0].regs[1] = 0x00;       // Sweep disabled
+      apu.rectangle[0].regs[2] = timer_val & 0xFF;      // Timer low
+      apu.rectangle[0].regs[3] = (timer_val >> 8) & 0x07;  // Timer high + length counter
+      
+      /* APU全体の設定 */
+      apu.enable_reg = 0x01;        // PULSE1のみ有効
+      apu.mix_enable = 0x01;        // PULSE1のみミックス
+      
+      /* 他のチャンネルを無効化 */
+      apu.rectangle[1].enabled = false;
+      apu.triangle.enabled = false;
+      apu.noise.enabled = false;
+      apu.dmc.enabled = false;
+      
+      printf("APU: PULSE1 test tone configured - freq=%d, vol=%d, duty=%d\n", 
+             apu.rectangle[0].freq, apu.rectangle[0].volume, apu.rectangle[0].duty_flip);
+      
+      test_tone_initialized = true;
+   }
+}
+
 void apu_process(void *buffer, int num_samples)
 {
    static int32 prev_sample = 0;
+   static int debug_frame_count = 0;
 
    int16 *buf16;
    uint8 *buf8;
+   
+   /* テスト用: PULSE1チャンネルで440Hzトーン出力 */
+   apu_force_pulse1_test_tone();
+   
+   /* APU構造体デバッグ情報 - 60フレームごとに表示 */
+   if (debug_frame_count % 60 == 0 && buffer != NULL) {
+      dump_apu();
+   }
+
+   debug_frame_count++;
 
    if (NULL != buffer)
    {

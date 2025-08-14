@@ -828,7 +828,7 @@ public:
             cpu_ctx->s_reg = 0xFD;  // スタックポインタを設定
         }
         
-        printf("NSF: CPU setup for PLAY at $%04X, SP=$%02X\n", _nsf_header.play_addr, cpu_ctx->s_reg);
+        //printf("NSF: CPU setup for PLAY at $%04X, SP=$%02X\n", _nsf_header.play_addr, cpu_ctx->s_reg);
     }
 
     // Execute NSF INIT routine safely without full NES frame rendering
@@ -1221,7 +1221,9 @@ public:
     virtual int audio_buffer(int16_t* b, int len)
     {
         int n = frame_sample_count();
+        //printf("frame_sample_count:%d\n",n);
         if (nes_sound_cb) {
+            //printf("nes_sound_cb:%p\n",nes_sound_cb);
             nes_sound_cb(b,n);  // 8 bit unsigned
             uint8_t* b8 = (uint8_t*)b;
             for (int i = n-1; i >= 0; i--)
