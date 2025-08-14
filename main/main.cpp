@@ -34,7 +34,7 @@
 
 Emu* _emu = 0;
 int _sample_count = -1;
-uint32_t _frame_time = 0;
+//uint32_t _frame_time = 0;
 // uint32_t _drawn = 1;
 
 using namespace std;
@@ -68,6 +68,20 @@ void update_audio()
     int format = _emu->audio_format >> 8;
     _sample_count = _emu->frame_sample_count();
     _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
+    
+    // オーディオデバッグ：60フレームごとにチェック
+    static uint32_t audio_frame_count = 0;
+    if (audio_frame_count % 60 == 0) {
+        // サンプル数と最初のいくつかのサンプル値を表示
+        printf("AUDIO[%lu]: samples=%d, format=%d\n", audio_frame_count, _sample_count, format);
+        if (_sample_count > 0) {
+            printf("AUDIO: first 8 samples: %d %d %d %d %d %d %d %d\n", 
+                   abuffer[0], abuffer[1], abuffer[2], abuffer[3], 
+                   abuffer[4], abuffer[5], abuffer[6], abuffer[7]);
+        }
+    }
+    audio_frame_count++;
+    
     audio_write_16(abuffer,_sample_count,format);
 }
 
@@ -89,16 +103,51 @@ void emu_task(void* arg)
     }
     //_drawn = _frame_counter;
 
+    // 60Hz timing constants
+    const uint32_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
+    uint64_t next_frame_time = esp_timer_get_time();
+    uint32_t frame_count = 0;
+    uint32_t total_processing_time = 0;
+    
+    printf("Starting 60Hz NSF playback loop...\n");
+
     while(true) //emu loop
     {
-      // wait for blanking before drawing to avoid tearing
-      video_sync();
-      // Draw a frame, update sound, process hid events
-      uint32_t t = xthal_get_ccount();
+      uint64_t frame_start = esp_timer_get_time();
+      
+      // NSF audio processing
+      //uint32_t t = xthal_get_ccount();
       update_audio();
-      _frame_time = xthal_get_ccount() - t;
-      //_lines = _emu->video_buffer();
-      //_drawn++;
+      //_frame_time = xthal_get_ccount() - t;
+      
+      uint64_t frame_end = esp_timer_get_time();
+      uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);
+      total_processing_time += processing_time_us;
+      frame_count++;
+      
+      // Calculate next frame time
+      next_frame_time += target_frame_time_us;
+      
+      // Sleep until next frame
+      int64_t sleep_time_us = next_frame_time - esp_timer_get_time();
+      
+      if (sleep_time_us > 1000) {
+        // Sleep if we have more than 1ms left
+        vTaskDelay(pdMS_TO_TICKS(sleep_time_us / 1000));
+      } else if (sleep_time_us < -target_frame_time_us) {
+        // If we're more than one frame behind, reset timing
+        printf("Frame timing reset - processing took too long\n");
+        next_frame_time = esp_timer_get_time();
+      }
+      
+      // Performance logging every 5 seconds (300 frames)
+      if (frame_count % 300 == 0) {
+        uint32_t avg_processing_us = total_processing_time / 300;
+        float cpu_usage = (float)avg_processing_us / target_frame_time_us * 100.0f;
+        printf("NSF 60Hz: avg processing=%lu us, CPU usage=%.1f%%, frame=%lu\n", 
+               avg_processing_us, cpu_usage, frame_count);
+        total_processing_time = 0;
+      }
     }
 }
 
