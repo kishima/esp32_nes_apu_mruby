@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <algorithm>
+#include <stdlib.h>
 #include "soc/rtc.h"
 
 #define PERF  // some stats about where we spend our time
@@ -62,30 +63,25 @@ string to_string(int i)
 
 void update_audio()
 {
-    // _emu->update();  // コメントアウト
+    _emu->update();  // コメントアウト
 
     int16_t abuffer[313*2];
     int format = _emu->audio_format >> 8;
     _sample_count = _emu->frame_sample_count();
     
-    // 簡単なテスト音波形を生成
-    static int test_counter = 0;
+#if 0
+    // ランダムなテスト音波形を生成
     for (int i = 0; i < _sample_count; i++) {
-        // 低い周波数の矩形波テスト (約100Hz)
-        if ((test_counter / 78) % 2 == 0) {  // 15700Hz / 78 / 2 ≈ 100Hz
-            abuffer[i] = 10000;   // 正の値
-        } else {
-            abuffer[i] = -10000;  // 負の値
-        }
-        test_counter++;
+        // -10000 から 10000 の範囲でランダムな値を生成
+        abuffer[i] = (rand() % 20001) - 10000;
     }
-    printf("TEST: generating square wave, counter=%d\n", test_counter);
-    
-    // _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));  // コメントアウト
+#endif
+
+    _sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));  // コメントアウト
     
     // オーディオデバッグ：60フレームごとにチェック
     static uint32_t audio_frame_count = 0;
-    if (audio_frame_count % 60 == 0) {
+      if (audio_frame_count % 60 == 0) {
         // サンプル数と最初のいくつかのサンプル値を表示
         printf("AUDIO[%lu]: samples=%d, format=%d\n", audio_frame_count, _sample_count, format);
         
@@ -99,7 +95,7 @@ void update_audio()
     }
     audio_frame_count++;
     
-    printf("TEST: calling audio_write_16 with samples=%d, format=%d\n", _sample_count, format);
+    //printf("TEST: calling audio_write_16 with samples=%d, format=%d\n", _sample_count, format);
     audio_write_16(abuffer,_sample_count,1);  // 強制的にモノラル(1チャンネル)に設定
 }
 
@@ -110,6 +106,9 @@ void emu_task(void* arg)
     printf("emu_task %s running on core %d at %lu MHz\n",
       _emu->name.c_str(), xPortGetCoreID(), cpu_freq_mhz);
     printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
+    
+    // 乱数シードの初期化
+    srand(esp_timer_get_time());
 
     //emu init
     //std::string rom_file = "/" + _emu->name + "/chase.nes";
