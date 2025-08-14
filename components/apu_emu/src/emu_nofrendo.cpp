@@ -243,6 +243,7 @@ void nes_renderframe_audio();
 extern "C" {
 #include "nofrendo/nes_mmc.h"
 #include "nofrendo/nes_rom.h"
+#include "nofrendo/nes6502.h"
 }
 
 static void (*nes_sound_cb)(void *buffer, int length) = 0;
@@ -664,6 +665,50 @@ public:
         return true;
     }
 
+    // Set up CPU for NSF PLAY routine execution
+    void nsf_setup_play() {
+        if (!_nsf_initialized) {
+            printf("NSF: Not initialized, cannot setup PLAY\n");
+            return;
+        }
+        
+        nes6502_context nsf_ctx;
+        
+        // Get current CPU context
+        nes6502_getcontext(&nsf_ctx);
+        
+        // Set up CPU for PLAY routine
+        nsf_ctx.pc_reg = _nsf_header.play_addr;  // PLAY routine address
+        // A, X registers keep their current values (don't modify)
+        // Reset stack pointer to ensure clean execution
+        nsf_ctx.s_reg = 0xFF;
+        nsf_ctx.p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
+        
+        // Apply CPU state for NSF PLAY
+        nes6502_setcontext(&nsf_ctx);
+        
+        // Create safe dummy return area with NOP loop
+        // Use zero page area $00F0-$00FF for safety
+        uint8_t *zp = nsf_ctx.mem_page[0];  // Zero page $0000-$00FF
+        if (zp) {
+            // Create NOP loop at $00F0: NOP; JMP $00F0
+            zp[0xF0] = 0xEA;  // NOP instruction
+            zp[0xF1] = 0x4C;  // JMP absolute instruction
+            zp[0xF2] = 0xF0;  // Jump target low byte ($00F0)
+            zp[0xF3] = 0x00;  // Jump target high byte
+            
+            // Push dummy return address onto stack
+            uint8_t *stack = nsf_ctx.mem_page[0] + 0x100;
+            stack[0xFF] = 0x00;  // Return to $00F0 (NOP loop)
+            stack[0xFE] = 0xF0;
+            // Adjust stack pointer to account for pushed addresses
+            nsf_ctx.s_reg = 0xFD;
+            nes6502_setcontext(&nsf_ctx);
+        }
+        
+        printf("NSF: CPU set for PLAY routine at $%04X\n", _nsf_header.play_addr);
+    }
+
     // Initialize NSF playback for specific song
     bool nsf_init_song(uint16_t song_number) {
         if (song_number < 1 || song_number > _nsf_header.total_songs) {
@@ -677,11 +722,40 @@ public:
         printf("NSF: Initializing song %d/%d\n", song_number, _nsf_header.total_songs);
         printf("NSF: INIT address: $%04X\n", _nsf_header.init_addr);
         printf("NSF: PLAY address: $%04X\n", _nsf_header.play_addr);
+
+        // Set up 6502 CPU state for NSF INIT call
+        nes6502_context nsf_ctx;
         
-        // TODO: Set up 6502 CPU state for NSF INIT call
-        // - Set A register = song_number - 1 (0-based)  
-        // - Set X register = 0 (NTSC) or 1 (PAL)
-        // - Call INIT routine at _nsf_header.init_addr
+        // Get current CPU context
+        nes6502_getcontext(&nsf_ctx);
+        
+        // Set NSF-specific CPU registers
+        nsf_ctx.pc_reg = _nsf_header.init_addr;  // INIT routine address
+        nsf_ctx.a_reg = song_number - 1;         // Song number (0-based)
+        nsf_ctx.x_reg = 0;                       // 0 = NTSC, 1 = PAL
+        nsf_ctx.s_reg = 0xFF;                    // Initialize stack pointer
+        nsf_ctx.p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
+        
+        // Apply CPU state for NSF INIT
+        nes6502_setcontext(&nsf_ctx);
+        
+        // Create safe dummy return area with NOP loop for INIT
+        uint8_t *zp = nsf_ctx.mem_page[0];  // Zero page $0000-$00FF
+        if (zp) {
+            // Create NOP loop at $00F0: NOP; JMP $00F0 (same as PLAY)
+            zp[0xF0] = 0xEA;  // NOP instruction
+            zp[0xF1] = 0x4C;  // JMP absolute instruction  
+            zp[0xF2] = 0xF0;  // Jump target low byte ($00F0)
+            zp[0xF3] = 0x00;  // Jump target high byte
+            
+            // Push dummy return address onto stack for INIT RTS
+            uint8_t *stack = nsf_ctx.mem_page[0] + 0x100;
+            stack[0xFF] = 0x00;  // Return to $00F0 (NOP loop)
+            stack[0xFE] = 0xF0;
+            // Adjust stack pointer to account for pushed addresses
+            nsf_ctx.s_reg = 0xFD;
+            nes6502_setcontext(&nsf_ctx);
+        }
         
         _nsf_initialized = true;
         return true;
@@ -832,17 +906,22 @@ public:
             return -1;
         }
 
-        //_lines = nes_emulate_frame(true);   // first frame!
+        //exec INIT
+        nes_renderframe_audio();   // first frame!
         return 0;
     }
 
     virtual int update()
     {
-        if (_nofrendo_rom)
+        if (_nofrendo_rom && _nsf_initialized) {
             _lines = NULL;
-            //TODO: call PLAY section
+            
+            // Set up CPU for PLAY routine before audio rendering
+            nsf_setup_play();
+            
+            // Execute NSF PLAY routine via audio frame rendering
             nes_renderframe_audio();
-            //nes_emulate_frame_audio(true);
+        }
         return 0;
     }
 
