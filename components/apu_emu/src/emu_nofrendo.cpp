@@ -23,16 +23,6 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
-#ifdef ESP_PLATFORM
-#include "esp_log.h"
-#include "esp_task_wdt.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-
-// グローバルなウォッチドッグ登録状態
-static bool g_watchdog_task_added = false;
-#endif
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -40,6 +30,8 @@ static bool g_watchdog_task_added = false;
 extern "C" {
 #include "nofrendo/osd.h"
 #include "nofrendo/event.h"
+#include "nofrendo/nes.h"
+#include "nofrendo/nes_apu.h"
 };
 #include "math.h"
 
@@ -642,24 +634,117 @@ class EmuNsfPlay : public Emu {
     bool _nsf_initialized;
     bool _play_setup_done;
     
-    // NSF専用APUハンドラ設定
-    void nsf_setup_apu_handlers() {
-        extern uint8_t apu_read(uint32_t address);
-        extern void apu_write(uint32_t address, uint8_t value);
+    // APUメモリページの手動設定
+    void nsf_setup_apu_memory_page() {
+        printf("NSF: Setting up APU memory page at $4000-$40FF\n");
         
-        printf("NSF: Setting up APU memory handlers for $4000-$4015\n");
+        // APUレジスタ用のメモリ領域を確保
+        static uint8_t apu_memory_page[256];
+        memset(apu_memory_page, 0, sizeof(apu_memory_page));
         
-        // APUレジスタ領域（$4000-$4015）のメモリハンドラを設定
-        for (uint32_t addr = 0x4000; addr <= 0x4015; addr++) {
-            mem_setreadfunc(addr, apu_read);
-            mem_setwritefunc(addr, apu_write);
+        // CPU contextのメモリページテーブルに直接設定
+        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+        if (cpu_ctx) {
+            cpu_ctx->mem_page[0x40] = apu_memory_page;
+            printf("NSF: APU memory page set at %p\n", apu_memory_page);
+        } else {
+            printf("NSF: Failed to get CPU context for memory page setup\n");
+        }
+    }
+    
+    // NSF ROMメモリページの手動設定
+    void nsf_setup_rom_memory_page() {
+        printf("NSF: Setting up NSF ROM memory mapping\n");
+        
+        if (!_nofrendo_rom) {
+            printf("NSF: No NSF ROM data available\n");
+            return;
         }
         
-        // 追加のAPUレジスタ
-        mem_setreadfunc(0x4015, apu_read);   // APU Status register
-        mem_setwritefunc(0x4015, apu_write);
+        // NSFデータのヘッダをスキップして、実際の音楽データを取得
+        uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
         
-        printf("NSF: APU handlers configured\n");
+        // CPU contextのメモリページテーブルにNSFデータをマップ
+        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+        if (cpu_ctx) {
+            // $8000-$8FFF page (0x80)
+            cpu_ctx->mem_page[0x80] = nsf_data;
+            // $9000-$9FFF page (0x90) 
+            cpu_ctx->mem_page[0x90] = nsf_data + 0x1000;
+            // $A000-$AFFF page (0xA0)
+            cpu_ctx->mem_page[0xA0] = nsf_data + 0x2000;
+            // $B000-$BFFF page (0xB0)  
+            cpu_ctx->mem_page[0xB0] = nsf_data + 0x3000;
+            // $C000-$CFFF page (0xC0)
+            cpu_ctx->mem_page[0xC0] = nsf_data + 0x4000;
+            // $D000-$DFFF page (0xD0)
+            cpu_ctx->mem_page[0xD0] = nsf_data + 0x5000;
+            // $E000-$EFFF page (0xE0)
+            cpu_ctx->mem_page[0xE0] = nsf_data + 0x6000;
+            // $F000-$FFFF page (0xF0)
+            cpu_ctx->mem_page[0xF0] = nsf_data + 0x7000;
+            
+            printf("NSF: ROM mapped from $8000-$FFFF at %p\n", nsf_data);
+        } else {
+            printf("NSF: Failed to get CPU context for ROM mapping\n");
+        }
+    }
+    
+    // NSF専用APUハンドラ設定
+    bool nsf_setup_apu_handlers() {
+        printf("NSF: Setting up APU memory handlers for $4000-$4015\n");
+        
+        // Get NES context
+        nes_t* nes = nes_getcontextptr();
+        if (!nes || !nes->cpu) {
+            printf("NSF: No NES context available for APU setup\n");
+            return false;
+        }
+        
+        // Debug current memory handler status
+        printf("NSF: Checking current memory handlers...\n");
+        bool apu_handler_found = false;
+        for (int i = 0; i < 16 && nes->readhandler[i].read_func; i++) {
+            printf("NSF: Read handler %d: $%04X-$%04X\n", i, 
+                   nes->readhandler[i].min_range, nes->readhandler[i].max_range);
+            if (nes->readhandler[i].min_range == 0x4000 && 
+                nes->readhandler[i].max_range == 0x4015) {
+                apu_handler_found = true;
+            }
+        }
+        
+        if (apu_handler_found) {
+            printf("NSF: APU handlers already set up\n");
+            return true;
+        }
+        
+        // Add APU handlers manually if not found
+        printf("NSF: Adding APU handlers manually\n");
+        
+        // Find empty handler slot
+        int slot = -1;
+        for (int i = 0; i < 16; i++) {
+            if (!nes->readhandler[i].read_func) {
+                slot = i;
+                break;
+            }
+        }
+        
+        if (slot == -1) {
+            printf("NSF: No available memory handler slots\n");
+            return false;
+        }
+        
+        // Setup APU read/write handlers
+        nes->readhandler[slot].read_func = apu_read;
+        nes->readhandler[slot].min_range = 0x4000;
+        nes->readhandler[slot].max_range = 0x4015;
+        nes->writehandler[slot].write_func = apu_write;
+        nes->writehandler[slot].min_range = 0x4000;
+        nes->writehandler[slot].max_range = 0x4015;
+        
+        printf("NSF: APU handlers configured in slot %d\n", slot);
+        return true;
     }
 public:
     EmuNsfPlay(int ntsc) : Emu("nofrendo",256,240,ntsc,(16 | (1 << 8)),4,EMU_NES)    // audio is 16bit, 3 or 6 cc width
@@ -709,24 +794,26 @@ public:
             return;
         }
         
-        nes6502_context nsf_ctx;
-        
-        // Get current CPU context
-        nes6502_getcontext(&nsf_ctx);
+        // Get direct CPU context access
+        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+        if (!cpu_ctx) {
+            printf("NSF: No CPU context for PLAY setup\n");
+            return;
+        }
         
         // Check if memory pages are properly initialized
-        if (!nsf_ctx.mem_page[0]) {
+        if (!cpu_ctx->mem_page[0]) {
             printf("NSF: CPU memory not initialized, skipping PLAY setup\n");
             return;
         }
         
         // Set up CPU for PLAY routine - 毎回新しい状態で始める
-        nsf_ctx.pc_reg = _nsf_header.play_addr;  // PLAY routine address
-        nsf_ctx.s_reg = 0xFF;  // スタックポインタをリセット
-        nsf_ctx.p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
+        cpu_ctx->pc_reg = _nsf_header.play_addr;  // PLAY routine address
+        cpu_ctx->s_reg = 0xFF;  // スタックポインタをリセット
+        cpu_ctx->p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
         
         // Create safe dummy return area with NOP loop (一度だけ設定)
-        uint8_t *zp = nsf_ctx.mem_page[0];  // Zero page $0000-$00FF
+        uint8_t *zp = cpu_ctx->mem_page[0];  // Zero page $0000-$00FF
         if (zp) {
             // Create NOP loop at $00F0: NOP; JMP $00F0
             zp[0xF0] = 0xEA;  // NOP instruction
@@ -735,82 +822,59 @@ public:
             zp[0xF3] = 0x00;  // Jump target high byte
             
             // Push dummy return address onto stack - 毎回新しいスタックで設定
-            uint8_t *stack = nsf_ctx.mem_page[0] + 0x100;
+            uint8_t *stack = cpu_ctx->mem_page[0] + 0x100;
             stack[0xFF] = 0x00;  // Return to $00F0 (NOP loop) high byte
             stack[0xFE] = 0xEF;  // Return to $00EF (before NOP loop) low byte
-            nsf_ctx.s_reg = 0xFD;  // スタックポインタを設定
+            cpu_ctx->s_reg = 0xFD;  // スタックポインタを設定
         }
         
-        // Apply CPU state for NSF PLAY
-        nes6502_setcontext(&nsf_ctx);
-        
-        printf("NSF: CPU setup for PLAY at $%04X, SP=$%02X\n", _nsf_header.play_addr, nsf_ctx.s_reg);
+        printf("NSF: CPU setup for PLAY at $%04X, SP=$%02X\n", _nsf_header.play_addr, cpu_ctx->s_reg);
     }
 
     // Execute NSF INIT routine safely without full NES frame rendering
     void nsf_execute_init_routine() {
         printf("NSF: Executing INIT routine at $%04X\n", _nsf_header.init_addr);
         
-#ifdef ESP_PLATFORM
-        // グローバルなウォッチドッグ登録（一度だけ）
-        if (!g_watchdog_task_added) {
-            esp_err_t ret = esp_task_wdt_add(NULL);
-            if (ret == ESP_OK) {
-                printf("NSF: Task added to watchdog\n");
-                g_watchdog_task_added = true;
-            } else if (ret == ESP_ERR_INVALID_STATE) {
-                printf("NSF: Task already in watchdog\n");
-                g_watchdog_task_added = true;
-            } else {
-                printf("NSF: Failed to add task to watchdog: %d\n", ret);
-            }
-        }
-        esp_task_wdt_reset();
-#endif
+        // メモリページを事前に設定
+        printf("NSF: Pre-setting up memory pages before context access...\n");
+        nsf_setup_apu_memory_page();
+        nsf_setup_rom_memory_page();
         
-        // デバッグ：実行前のCPU状態を確認
-        nes6502_context debug_ctx;
-        nes6502_getcontext(&debug_ctx);
-        printf("DEBUG: INIT start PC=$%04X SP=$%02X\n", debug_ctx.pc_reg, debug_ctx.s_reg);
-        
-        // メモリページの状態を確認
-        printf("DEBUG: Memory pages: page[0]=%p, page[0x40]=%p\n", 
-               debug_ctx.mem_page[0], debug_ctx.mem_page[0x40]);
-        
-        if (debug_ctx.mem_page[0x80]) {
-            uint8_t *rom = debug_ctx.mem_page[0x80];
-            printf("DEBUG: ROM at $8000: %02X %02X %02X %02X\n", 
-                   rom[0], rom[1], rom[2], rom[3]);
-        } else {
-            printf("ERROR: No ROM mapped at $8000!\n");
+        // CPU contextを直接取得して状態確認（nes6502_getcontextを回避）
+        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+        if (!cpu_ctx) {
+            printf("ERROR: No CPU context available\n");
             return;
         }
         
-        // APUレジスター領域のチェックと修正
-        if ((uintptr_t)debug_ctx.mem_page[0x40] < 0x3f000000 || 
-            (uintptr_t)debug_ctx.mem_page[0x40] > 0x40000000) {
-            printf("ERROR: Invalid APU register mapping at page[0x40]=%p\n", debug_ctx.mem_page[0x40]);
-            printf("NSF: Setting up APU handlers manually...\n");
-            nsf_setup_apu_handlers();
-            
-            // 再度確認
-            nes6502_getcontext(&debug_ctx);
-            printf("DEBUG: After APU setup: page[0x40]=%p\n", debug_ctx.mem_page[0x40]);
+        printf("DEBUG: INIT start PC=$%04X SP=$%02X\n", cpu_ctx->pc_reg, cpu_ctx->s_reg);
+        
+        // メモリページの状態を確認
+        printf("DEBUG: Memory pages: page[0]=%p, page[0x40]=%p\n", 
+               cpu_ctx->mem_page[0], cpu_ctx->mem_page[0x40]);
+        
+        if (cpu_ctx->mem_page[0x80]) {
+            uint8_t *rom = cpu_ctx->mem_page[0x80];
+            printf("DEBUG: ROM at $8000: %02X %02X %02X %02X\n", 
+                   rom[0], rom[1], rom[2], rom[3]);
+        } else {
+            printf("ERROR: ROM still not mapped at $8000 after setup\n");
+            return;
         }
         
-        int start_time = esp_log_timestamp();
+        if (!cpu_ctx->mem_page[0x40]) {
+            printf("ERROR: APU page still not set after setup\n");
+            return;
+        }
+        
+        //int start_time = esp_log_timestamp();
         
         // シンプルな実行で問題を特定
         printf("NSF: Executing INIT with simple method\n");
         int executed_total = 0;
         
         // 非常に短いサイクル数で実行してテスト
-        for (int i = 0; i < 10; i++) {
-#ifdef ESP_PLATFORM
-            esp_task_wdt_reset();
-            vTaskDelay(1 / portTICK_PERIOD_MS);  // 1ms delay each iteration
-#endif
-            
+        for (int i = 0; i < 10; i++) {            
             int executed = nes6502_execute(100);  // 100サイクルずつ実行
             executed_total += executed;
             
@@ -823,12 +887,13 @@ public:
             }
         }
         
-        int end_time = esp_log_timestamp();
-        
+        //int end_time = esp_log_timestamp();
+        // 
         // デバッグ：実行後のCPU状態を確認
-        nes6502_getcontext(&debug_ctx);
-        printf("DEBUG: INIT end PC=$%04X SP=$%02X, executed=%d cycles, time=%dms\n", 
-               debug_ctx.pc_reg, debug_ctx.s_reg, executed_total, end_time - start_time);
+        // if (cpu_ctx) {
+        //     printf("DEBUG: INIT end PC=$%04X SP=$%02X, executed=%d cycles, time=%dms\n", 
+        //            cpu_ctx->pc_reg, cpu_ctx->s_reg, executed_total, end_time - start_time);
+        // }
                
         printf("NSF: INIT routine executed (%d total cycles)\n", executed_total);
     }
@@ -836,19 +901,7 @@ public:
     // Execute NSF PLAY routine safely without full NES frame rendering
     void nsf_execute_play_routine() {
         if (!_nsf_initialized) return;
-        
-#ifdef ESP_PLATFORM
-        // グローバルなウォッチドッグ登録（一度だけ）
-        if (!g_watchdog_task_added) {
-            esp_err_t ret = esp_task_wdt_add(NULL);
-            if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE) {
-                g_watchdog_task_added = true;
-            }
-        }
-        esp_task_wdt_reset();
-#endif
-        
-        // 毎回PLAYルーチンのためにCPU状態を再設定
+                // 毎回PLAYルーチンのためにCPU状態を再設定
         nsf_setup_play();
         
         // デバッグログを減らしてパフォーマンスを向上
@@ -856,45 +909,47 @@ public:
         bool show_debug = (play_count % 60 == 0);  // 1秒ごとに表示
         
         if (show_debug) {
-            nes6502_context debug_ctx;
-            nes6502_getcontext(&debug_ctx);
-            printf("DEBUG: PLAY[%lu] start PC=$%04X SP=$%02X\n", play_count, debug_ctx.pc_reg, debug_ctx.s_reg);
+            nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+            if (cpu_ctx) {
+                printf("DEBUG: PLAY[%lu] start PC=$%04X SP=$%02X\n", play_count, cpu_ctx->pc_reg, cpu_ctx->s_reg);
+            }
         }
         
         // 短いサイクル数でPLAYルーチンを実行
         int play_cycles = 100;  // さらに短くして安全性を向上
-        int start_time = esp_log_timestamp();
+        //int start_time = esp_log_timestamp();
         
         int executed = nes6502_execute(play_cycles);
         
-        int end_time = esp_log_timestamp();
+        //int end_time = esp_log_timestamp();
         play_count++;
         
         if (show_debug) {
-            nes6502_context debug_ctx;
-            nes6502_getcontext(&debug_ctx);
-            printf("DEBUG: PLAY[%lu] end PC=$%04X SP=$%02X, executed=%d cycles, time=%dms\n", 
-                   play_count-1, debug_ctx.pc_reg, debug_ctx.s_reg, executed, end_time - start_time);
-            
-            // APUレジスターの状態をチェック（安全なアクセス）
-            if (debug_ctx.mem_page[0x40] && 
-                (uintptr_t)debug_ctx.mem_page[0x40] >= 0x3f000000 && 
-                (uintptr_t)debug_ctx.mem_page[0x40] < 0x40000000) {
-                uint8_t *apu_regs = debug_ctx.mem_page[0x40];
-                printf("APU: $4000=%02X $4001=%02X $4002=%02X $4003=%02X\n", 
-                       apu_regs[0x00], apu_regs[0x01], apu_regs[0x02], apu_regs[0x03]);
-                printf("APU: $4004=%02X $4005=%02X $4006=%02X $4007=%02X\n", 
-                       apu_regs[0x04], apu_regs[0x05], apu_regs[0x06], apu_regs[0x07]);
-                printf("APU: $4015=%02X (channel enable)\n", apu_regs[0x15]);
-            } else {
-                printf("APU: Register access not available (invalid mapping)\n");
+            nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+            if (cpu_ctx) {
+                // printf("DEBUG: PLAY[%lu] end PC=$%04X SP=$%02X, executed=%d cycles, time=%dms\n", 
+                //        play_count-1, cpu_ctx->pc_reg, cpu_ctx->s_reg, executed, end_time - start_time);
+                
+                // APUレジスターの状態をチェック（安全なアクセス）
+                if (cpu_ctx->mem_page[0x40] && 
+                    (uintptr_t)cpu_ctx->mem_page[0x40] >= 0x3f000000 && 
+                    (uintptr_t)cpu_ctx->mem_page[0x40] < 0x40000000) {
+                    uint8_t *apu_regs = cpu_ctx->mem_page[0x40];
+                    printf("APU: $4000=%02X $4001=%02X $4002=%02X $4003=%02X\n", 
+                           apu_regs[0x00], apu_regs[0x01], apu_regs[0x02], apu_regs[0x03]);
+                    printf("APU: $4004=%02X $4005=%02X $4006=%02X $4007=%02X\n", 
+                           apu_regs[0x04], apu_regs[0x05], apu_regs[0x06], apu_regs[0x07]);
+                    printf("APU: $4015=%02X (channel enable)\n", apu_regs[0x15]);
+                } else {
+                    printf("APU: Register access not available (invalid mapping)\n");
+                }
             }
         }
         
         // 実行時間が異常に長い場合は警告
-        if (end_time - start_time > 5) {
-            printf("WARNING: PLAY routine took %dms - too long!\n", end_time - start_time);
-        }
+        // if (end_time - start_time > 5) {
+        //     printf("WARNING: PLAY routine took %dms - too long!\n", end_time - start_time);
+        // }
     }
 
     // Initialize NSF playback for specific song
@@ -911,30 +966,31 @@ public:
         printf("NSF: INIT address: $%04X\n", _nsf_header.init_addr);
         printf("NSF: PLAY address: $%04X\n", _nsf_header.play_addr);
 
-        // Set up 6502 CPU state for NSF INIT call
-        nes6502_context nsf_ctx;
-        
-        // Get current CPU context
-        nes6502_getcontext(&nsf_ctx);
+        // Set up 6502 CPU state for NSF INIT call using direct context access
+        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+        if (!cpu_ctx) {
+            printf("NSF: No CPU context available for INIT setup\n");
+            return false;
+        }
         
         // Check if memory pages are properly initialized
-        if (!nsf_ctx.mem_page[0]) {
+        if (!cpu_ctx->mem_page[0]) {
             printf("NSF: CPU memory not initialized, cannot setup INIT\n");
             return false;
         }
         
         // Set NSF-specific CPU registers
-        nsf_ctx.pc_reg = _nsf_header.init_addr;  // INIT routine address
-        nsf_ctx.a_reg = song_number - 1;         // Song number (0-based)
-        nsf_ctx.x_reg = 0;                       // 0 = NTSC, 1 = PAL
-        nsf_ctx.s_reg = 0xFF;                    // Initialize stack pointer
-        nsf_ctx.p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
+        cpu_ctx->pc_reg = _nsf_header.init_addr;  // INIT routine address
+        cpu_ctx->a_reg = song_number - 1;         // Song number (0-based)
+        cpu_ctx->x_reg = 0;                       // 0 = NTSC, 1 = PAL
+        cpu_ctx->s_reg = 0xFF;                    // Initialize stack pointer
+        cpu_ctx->p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
         
-        // Apply CPU state for NSF INIT
-        nes6502_setcontext(&nsf_ctx);
+        printf("NSF: CPU INIT setup - PC=$%04X A=$%02X X=$%02X\n", 
+               cpu_ctx->pc_reg, cpu_ctx->a_reg, cpu_ctx->x_reg);
         
         // Create safe dummy return area with NOP loop for INIT
-        uint8_t *zp = nsf_ctx.mem_page[0];  // Zero page $0000-$00FF
+        uint8_t *zp = cpu_ctx->mem_page[0];  // Zero page $0000-$00FF
         if (zp) {
             // Create NOP loop at $00F0: NOP; JMP $00F0 (same as PLAY)
             zp[0xF0] = 0xEA;  // NOP instruction
@@ -943,12 +999,11 @@ public:
             zp[0xF3] = 0x00;  // Jump target high byte
             
             // Push dummy return address onto stack for INIT RTS
-            uint8_t *stack = nsf_ctx.mem_page[0] + 0x100;
+            uint8_t *stack = cpu_ctx->mem_page[0] + 0x100;
             stack[0xFF] = 0x00;  // Return to $00F0 (NOP loop)
             stack[0xFE] = 0xF0;
             // Adjust stack pointer to account for pushed addresses
-            nsf_ctx.s_reg = 0xFD;
-            nes6502_setcontext(&nsf_ctx);
+            cpu_ctx->s_reg = 0xFD;
         }
         
         _nsf_initialized = true;
@@ -989,79 +1044,6 @@ public:
         printf("\n");
         
         return 1;  // MMC1
-    }
-
-    // Setup APU memory handlers specifically for NSF
-    bool nsf_setup_apu_handlers() {
-        // Get NES context
-        nes_t* nes = nes_getcontextptr();
-        if (!nes || !nes->cpu) {
-            printf("NSF: No NES context available for APU setup\n");
-            return false;
-        }
-        
-        // Debug current memory handler status
-        printf("NSF: Checking current memory handlers...\n");
-        bool apu_handler_found = false;
-        for (int i = 0; i < 16 && nes->readhandler[i].read_func; i++) {
-            printf("NSF: Read handler %d: $%04X-$%04X\n", i, 
-                   nes->readhandler[i].min_range, nes->readhandler[i].max_range);
-            if (nes->readhandler[i].min_range == 0x4000 && 
-                nes->readhandler[i].max_range == 0x4015) {
-                apu_handler_found = true;
-            }
-        }
-        
-        if (apu_handler_found) {
-            printf("NSF: APU handlers already set up\n");
-            return true;
-        }
-        
-        // APU handlers not found, need to add them manually
-        printf("NSF: APU handlers missing, adding them...\n");
-        
-        // Find first empty slot in read handlers
-        int read_slot = -1;
-        for (int i = 0; i < 32; i++) {  // MAX_MEM_HANDLERS
-            if (!nes->readhandler[i].read_func) {
-                read_slot = i;
-                break;
-            }
-        }
-        
-        // Find first empty slot in write handlers  
-        int write_slot = -1;
-        for (int i = 0; i < 32; i++) {  // MAX_MEM_HANDLERS
-            if (!nes->writehandler[i].write_func) {
-                write_slot = i;
-                break;
-            }
-        }
-        
-        if (read_slot == -1 || write_slot == -1) {
-            printf("NSF: No free memory handler slots available\n");
-            return false;
-        }
-        
-        // Add APU read handler for $4000-$4015
-        nes->readhandler[read_slot].min_range = 0x4000;
-        nes->readhandler[read_slot].max_range = 0x4015; 
-        nes->readhandler[read_slot].read_func = apu_read;
-        
-        // Add APU write handlers for $4000-$4013 and $4015
-        nes->writehandler[write_slot].min_range = 0x4000;
-        nes->writehandler[write_slot].max_range = 0x4013;
-        nes->writehandler[write_slot].write_func = apu_write;
-        
-        if (write_slot + 1 < 32) {
-            nes->writehandler[write_slot + 1].min_range = 0x4015;
-            nes->writehandler[write_slot + 1].max_range = 0x4015;
-            nes->writehandler[write_slot + 1].write_func = apu_write;
-        }
-        
-        printf("NSF: Added APU handlers at slots %d (read) and %d (write)\n", 
-               read_slot, write_slot);
-        return true;
     }
 
     // Setup NSF mapper based on detected type
@@ -1157,11 +1139,38 @@ public:
             return -1;
         }
 
-        // Initialize NES emulation first (this sets up CPU context)
-        nes_emulate_init(path.c_str(), width, height);
-        printf("nes_emulate_init done\n");
+        // Try to initialize NES emulation context first
+        printf("NSF: Starting NSF initialization with basic NES context...\n");
         
-        // NSF-specific initialization: Ensure APU memory handlers are properly set up
+        // Create a minimal dummy ROM for NES initialization
+        uint8_t dummy_rom[16] = {
+            'N', 'E', 'S', 0x1A,  // iNES header
+            1, 0, 0, 0,            // 1 PRG bank, no CHR, mapper 0
+            0, 0, 0, 0, 0, 0, 0, 0 // padding
+        };
+        
+        // Temporarily replace ROM data for basic NES init
+        uint8_t* original_rom = _nofrendo_rom;
+        _nofrendo_rom = dummy_rom;
+        
+        // Initialize basic NES system 
+        nes_emulate_init("dummy.nes", width, height);
+        
+        // Restore original NSF data
+        _nofrendo_rom = original_rom;
+        
+        printf("NSF: Basic NES initialization completed\n");
+        
+        // Check if NES context is now available
+        nes_t* nes_ctx = nes_getcontextptr();
+        if (!nes_ctx || !nes_ctx->cpu) {
+            printf("NSF: Still no NES context after initialization\n");
+            return -1;
+        }
+        
+        printf("NSF: NES context available - CPU: %p, APU: %p\n", nes_ctx->cpu, nes_ctx->apu);
+        
+        // Setup APU memory handlers
         printf("NSF: Setting up APU memory handlers...\n");
         if (!nsf_setup_apu_handlers()) {
             printf("NSF: Failed to setup APU handlers\n");

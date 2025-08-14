@@ -104,7 +104,7 @@ void emu_task(void* arg)
     //_drawn = _frame_counter;
 
     // 60Hz timing constants
-    const uint32_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
+    const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
     uint64_t next_frame_time = esp_timer_get_time();
     uint32_t frame_count = 0;
     uint32_t total_processing_time = 0;
@@ -116,9 +116,7 @@ void emu_task(void* arg)
       uint64_t frame_start = esp_timer_get_time();
       
       // NSF audio processing
-      //uint32_t t = xthal_get_ccount();
-      update_audio();
-      //_frame_time = xthal_get_ccount() - t;
+      //update_audio();
       
       uint64_t frame_end = esp_timer_get_time();
       uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);
@@ -129,7 +127,8 @@ void emu_task(void* arg)
       next_frame_time += target_frame_time_us;
       
       // Sleep until next frame
-      int64_t sleep_time_us = next_frame_time - esp_timer_get_time();
+      int64_t sleep_time_us = next_frame_time - frame_end;
+      //printf("next_frame_time:%lld,processing_time_us:%ld, sleep_time_us=%lld\n",next_frame_time,processing_time_us,sleep_time_us);
       
       if (sleep_time_us > 1000) {
         // Sleep if we have more than 1ms left
