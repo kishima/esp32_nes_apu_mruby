@@ -950,286 +950,29 @@ public:
         printf("NSF: INIT routine executed (%d total cycles)\n", executed_total);
     }
 
-    // Execute NSF PLAY routine safely without full NES frame rendering
     void nsf_execute_play_routine() {
-        if (!_nsf_initialized) {
-            if (PLAY_DEBUG) printf("[PLAY_DEBUG] nsf_execute_play_routine: NSF not initialized\n");
-            return;
-        }
+        if (!_nsf_initialized) return;
         
-        static uint32_t total_calls = 0;
-        total_calls++;
-        if (PLAY_DEBUG && (total_calls <= 5 || total_calls % 60 == 0)) {
-            printf("[PLAY_DEBUG] nsf_execute_play_routine: call #%lu\n", total_calls);
-        }
-                // 毎回PLAYルーチンのためにCPU状態を再設定
-        nsf_setup_play();
-        
-        // デバッグログを減らしてパフォーマンスを向上
         static uint32_t play_count = 0;
-        bool show_debug = (play_count % 60 == 0);  // 1秒ごとに表示
-        show_debug = false;  
-        
-        if (show_debug) {
-            nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-            if (cpu_ctx) {
-                printf("DEBUG: PLAY[%lu] start PC=$%04X SP=$%02X\n", play_count, cpu_ctx->pc_reg, cpu_ctx->s_reg);
-                
-                // CPU状態の詳細表示
-                printf("CPU State: A=$%02X X=$%02X Y=$%02X P=$%02X\n", 
-                       cpu_ctx->a_reg, cpu_ctx->x_reg, cpu_ctx->y_reg, cpu_ctx->p_reg);
-                
-                // スタック内容の確認
-                if (cpu_ctx->mem_page[0x01] && 
-                    (uintptr_t)cpu_ctx->mem_page[0x01] >= 0x3f000000 && 
-                    (uintptr_t)cpu_ctx->mem_page[0x01] < 0x40000000) {
-                    uint8_t *stack_page = cpu_ctx->mem_page[0x01];
-                    printf("Stack at SP: $01%02X=$%02X $01%02X=$%02X $01%02X=$%02X\n",
-                           cpu_ctx->s_reg, stack_page[cpu_ctx->s_reg],
-                           cpu_ctx->s_reg+1, stack_page[cpu_ctx->s_reg+1],
-                           cpu_ctx->s_reg+2, stack_page[cpu_ctx->s_reg+2]);
-                }
-                
-                // メモリマッピングの詳細検証
-                printf("Memory Pages: ");
-                for (int i = 0; i < 256; i += 0x20) {
-                    if (cpu_ctx->mem_page[i]) {
-                        printf("$%02X00 ", i);
-                    }
-                }
-                printf("\n");
-                
-                // PLAYルーチンの実際のバイナリコードを表示
-                if (cpu_ctx->mem_page[0x80] && 
-                    (uintptr_t)cpu_ctx->mem_page[0x80] >= 0x3f000000 && 
-                    (uintptr_t)cpu_ctx->mem_page[0x80] < 0x40000000) {
-                    uint8_t *rom = cpu_ctx->mem_page[0x80];
-                    printf("PLAY code at $800C: ");
-                    for (int i = 0; i < 8; i++) {
-                        printf("%02X ", rom[0x0C + i]);
-                    }
-                    printf("\n");
-                    
-                    // メモリ読み取りテスト
-                    printf("Memory read test $800C: $%02X (should be 20)\n", rom[0x0C]);
-                    printf("Memory read test $800D: $%02X (should be 52)\n", rom[0x0D]);
-                    printf("Memory read test $800E: $%02X (should be 80)\n", rom[0x0E]);
-                } else {
-                    printf("PLAY: ROM access not available - ptr=0x%08X\n", 
-                           (uint32_t)cpu_ctx->mem_page[0x80]);
-                }
-            }
-        }
-        
-        // 段階的実行テスト: 最初の何回かは1サイクルずつ実行
-        int executed = 0;
-        if (play_count < 3 && false) {  // デバッグモード無効化
-            printf("=== Single-step execution test ===\n");
-            nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-            uint16_t initial_pc = cpu_ctx->pc_reg;
-            
-            for (int step = 0; step < 10 && executed < 100; step++) {
-                uint16_t pc_before = cpu_ctx->pc_reg;
-                uint8_t opcode = 0;
-                
-                if (cpu_ctx->mem_page[0x80]) {
-                    uint8_t *rom = cpu_ctx->mem_page[0x80];
-                    uint16_t offset = pc_before - 0x8000;
-                    if (offset < 0x8000) {  // 範囲チェック
-                        opcode = rom[offset];
-                    }
-                }
-                
-                printf("Step %d: PC=$%04X opcode=$%02X ", step, pc_before, opcode);
-                
-                int step_executed = nes6502_execute(10);  // JSR needs 6 cycles, give extra headroom
-                executed += step_executed;
-                
-                uint16_t pc_after = cpu_ctx->pc_reg;
-                printf("-> PC=$%04X (executed=%d cycles)\n", pc_after, step_executed);
-                
-                if (pc_after == pc_before) {
-                    printf("ERROR: PC did not advance after %d cycles!\n", step_executed);
-                    break;
-                }
-                
-                if (pc_after == initial_pc && step > 0) {
-                    printf("SUCCESS: Returned to initial PC (RTS executed)\n");
-                    break;
-                }
-            }
-            printf("=== End single-step test ===\n");
-        } else {
-            // 通常の実行
-            int play_cycles = 500;
-            if (PLAY_DEBUG && total_calls <= 5) {
-                printf("[PLAY_DEBUG] Executing PLAY with %d cycles\n", play_cycles);
-                // CPU状態を確認
-                nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-                if (cpu_ctx) {
-                    printf("[PLAY_DEBUG] CPU state before: PC=$%04X, SP=$%02X\n", cpu_ctx->pc_reg, cpu_ctx->s_reg);
-                    
-                    // $800Cのメモリ内容を直接確認
-                    if (cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT]) {
-                        uint8_t *rom_page = cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT];
-                        printf("[PLAY_DEBUG] Memory at $800C: %02X %02X %02X %02X\n", 
-                               rom_page[0x0C], rom_page[0x0D], rom_page[0x0E], rom_page[0x0F]);
-                        printf("[PLAY_DEBUG] Expected: 20 52 80 xx (JSR $8052)\n");
-                        
-                        // bank_readbyte経由でもテスト
-                        printf("[PLAY_DEBUG] bank_readbyte test: $800C=%02X, $800D=%02X, $800E=%02X\n",
-                               rom_page[0x0C], rom_page[0x0D], rom_page[0x0E]);
-                    } else {
-                        printf("[PLAY_DEBUG] ERROR: No ROM page at $8000 during PLAY!\n");
-                    }
-                    
-                    // PLAYルーチン実行前にメモリページを強制的に再設定
-                    printf("[PLAY_DEBUG] Current memory page at bank 8: %p\n", cpu_ctx->mem_page[8]);
-                    if (_nofrendo_rom) {
-                        uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
-                        cpu_ctx->mem_page[8] = nsf_data;
-                        printf("[PLAY_DEBUG] Re-set memory page at bank 8: %p\n", cpu_ctx->mem_page[8]);
-                        
-                        // 設定後の確認（直接メモリアクセス）
-                        uint8_t test_read = nsf_data[0x0C];
-                        printf("[PLAY_DEBUG] direct memory read[$800C] after re-set: $%02X\n", test_read);
-                        
-                        // 重要：CPUコンテキストをグローバルcpu変数に同期
-                        // 同期前にコンテキストの状態を確認
-                        printf("[PLAY_DEBUG] Before setcontext: cpu_ctx->mem_page[8]=%p\n", 
-                               cpu_ctx->mem_page[8]);
-                        
-                        // 現在のグローバルCPUコンテキストを取得してチェック
-                        nes6502_context temp_ctx;
-                        nes6502_getcontext(&temp_ctx);
-                        printf("[PLAY_DEBUG] Current global CPU: mem_page[8]=%p\n", 
-                               temp_ctx.mem_page[8]);
-                        
-                        // メモリページポインタを保持
-                        uint8_t* saved_mem_page_8 = cpu_ctx->mem_page[8];
-                        
-                        nes6502_setcontext(cpu_ctx);
-                        
-                        // 同期後に再度確認
-                        nes6502_getcontext(&temp_ctx);
-                        printf("[PLAY_DEBUG] After setcontext: global mem_page[8]=%p (expected %p)\n", 
-                               temp_ctx.mem_page[8], saved_mem_page_8);
-                        
-                        // もし異なる場合は、強制的に修正
-                        if (temp_ctx.mem_page[8] != saved_mem_page_8) {
-                            printf("[PLAY_DEBUG] WARNING: setcontext failed to set mem_page[8] correctly!\n");
-                            // 直接グローバルCPUのメモリページを修正する方法が必要
-                        }
-                        
-                        printf("[PLAY_DEBUG] CPU context synced to global cpu variable\n");
-                    }
-                }
-            } else {
-                // メモリページ再設定（デバッグなし版）
-                if (_nofrendo_rom) {
-                    nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-                    if (cpu_ctx) {
-                        uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
-                        cpu_ctx->mem_page[8] = nsf_data;
-                        nes6502_setcontext(cpu_ctx);
-                    }
-                }
-            }
-            executed = nes6502_execute(play_cycles);
-            if (PLAY_DEBUG && total_calls <= 5) {
-                printf("[PLAY_DEBUG] PLAY executed %d cycles\n", executed);
-                // CPU状態を確認
-                nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-                if (cpu_ctx) {
-                    printf("[PLAY_DEBUG] CPU state after: PC=$%04X, SP=$%02X\n", cpu_ctx->pc_reg, cpu_ctx->s_reg);
-                }
-            }
-        }
-        
-        //int end_time = esp_log_timestamp();
         play_count++;
         
-        // NSFのAPUチャンネルを強制的に有効化（音声出力を確実にするため）
-        if (play_count <= 5) {
-            if (PLAY_DEBUG) printf("[PLAY_DEBUG] Forcing APU channels enable for NSF playback\n");
-            
-            // PULSE1チャンネルの基本設定（テスト音生成）
-            apu_write(0x4000, 0x8F);  // Duty 50%, Length counter halt, Constant volume, Volume=15
-            apu_write(0x4001, 0x00);  // Sweep disabled
-            apu_write(0x4002, 0x61);  // Timer low (440Hz程度の音程)
-            apu_write(0x4003, 0x01);  // Length counter=5, Timer high
-            
-            // $4015 - チャンネル有効化レジスタ
-            // Bit 0: Pulse 1, Bit 1: Pulse 2, Bit 2: Triangle, Bit 3: Noise, Bit 4: DMC
-            uint8_t channel_enable = 0x1F;  // 全チャンネル有効（Pulse1, Pulse2, Triangle, Noise, DMC）
-            apu_write(0x4015, channel_enable);
-            
-            if (PLAY_DEBUG) {
-                printf("[PLAY_DEBUG] APU channels forcibly enabled: $4015 = $%02X\n", channel_enable);
-                printf("[PLAY_DEBUG] PULSE1 configured for test tone generation\n");
-            }
-        }
+        nsf_setup_play();
         
-        if (show_debug) {
+        if (_nofrendo_rom) {
             nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
             if (cpu_ctx) {
-                printf("DEBUG: PLAY[%lu] end PC=$%04X SP=$%02X, executed=%d cycles\n", 
-                       play_count-1, cpu_ctx->pc_reg, cpu_ctx->s_reg, executed);
-                
-                // 実行後のCPU状態表示
-                printf("CPU State After: A=$%02X X=$%02X Y=$%02X P=$%02X\n", 
-                       cpu_ctx->a_reg, cpu_ctx->x_reg, cpu_ctx->y_reg, cpu_ctx->p_reg);
-                
-                // PC値の変化をチェック
-                if (cpu_ctx->pc_reg == _nsf_header.play_addr) {
-                    printf("WARNING: PC did not change - PLAY routine may not be executing\n");
-                    
-                    // PCが変化しない原因を調査
-                    if (cpu_ctx->mem_page[0x80]) {
-                        uint8_t *rom = cpu_ctx->mem_page[0x80];
-                        uint8_t first_opcode = rom[0x0C];
-                        printf("First instruction at PC: $%02X ", first_opcode);
-                        if (first_opcode == 0x20) {
-                            printf("(JSR - should jump)\n");
-                        } else if (first_opcode == 0x00) {
-                            printf("(BRK - will cause interrupt)\n");
-                        } else if (first_opcode == 0xEA) {
-                            printf("(NOP - will advance PC)\n");
-                        } else {
-                            printf("(Unknown opcode)\n");
-                        }
-                    }
-                } else {
-                    printf("INFO: PC changed from $%04X to $%04X\n", _nsf_header.play_addr, cpu_ctx->pc_reg);
-                }
-                
-                // スタック変化の確認
-                static uint8_t prev_sp = 0xFF;
-                if (cpu_ctx->s_reg != prev_sp) {
-                    printf("Stack changed: SP $%02X -> $%02X\n", prev_sp, cpu_ctx->s_reg);
-                    prev_sp = cpu_ctx->s_reg;
-                }
-                
-                // APUレジスターの状態をチェック（安全なアクセス）
-                if (cpu_ctx->mem_page[0x40] && 
-                    (uintptr_t)cpu_ctx->mem_page[0x40] >= 0x3f000000 && 
-                    (uintptr_t)cpu_ctx->mem_page[0x40] < 0x40000000) {
-                    uint8_t *apu_regs = cpu_ctx->mem_page[0x40];
-                    printf("APU: $4000=%02X $4001=%02X $4002=%02X $4003=%02X\n", 
-                           apu_regs[0x00], apu_regs[0x01], apu_regs[0x02], apu_regs[0x03]);
-                    printf("APU: $4004=%02X $4005=%02X $4006=%02X $4007=%02X\n", 
-                           apu_regs[0x04], apu_regs[0x05], apu_regs[0x06], apu_regs[0x07]);
-                    printf("APU: $4015=%02X (channel enable)\n", apu_regs[0x15]);
-                } else {
-                    printf("APU: Register access not available (invalid mapping)\n");
-                }
+                uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
+                cpu_ctx->mem_page[8] = nsf_data;
+                nes6502_setcontext(cpu_ctx);
             }
         }
         
-        // 実行時間が異常に長い場合は警告
-        // if (end_time - start_time > 5) {
-        //     printf("WARNING: PLAY routine took %dms - too long!\n", end_time - start_time);
-        // }
+        nes6502_execute(500);
+        
+        // Ensure APU channels are enabled for NSF playback
+        if (play_count <= 5) {
+            apu_write(0x4015, 0x1F);  // Enable all APU channels
+        }
     }
 
     // Initialize NSF playback for specific song
