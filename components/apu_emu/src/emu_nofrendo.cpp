@@ -943,26 +943,16 @@ public:
             printf("ERROR: APU page still not set after setup\n");
             return;
         }
-        
-        //int start_time = esp_log_timestamp();
-        
+
         // シンプルな実行で問題を特定
         printf("NSF: Executing INIT with simple method\n");
         int executed_total = 0;
         
-        // 非常に短いサイクル数で実行してテスト
-        for (int i = 0; i < 10; i++) {            
-            int executed = nes6502_execute(100);  // 100サイクルずつ実行
-            executed_total += executed;
-            
-            printf("NSF: INIT chunk %d: executed %d cycles\n", i, executed);
-            
-            // 実行サイクル数が要求より少ない場合は終了
-            if (executed < 100) {
-                printf("NSF: INIT routine completed early after %d total cycles\n", executed_total);
-                break;
-            }
-        }
+        // INITルーチンは通常数十サイクルで完了するため、十分な余裕をもって実行
+        int executed = nes6502_execute(200);  // 200サイクルで十分
+        executed_total = executed;
+        
+        printf("NSF: INIT routine executed %d cycles\n", executed);
                
         printf("NSF: INIT routine executed (%d total cycles)\n", executed_total);
     }
@@ -1035,8 +1025,8 @@ public:
             
             // Push dummy return address onto stack for INIT RTS
             uint8_t *stack = cpu_ctx->mem_page[0] + 0x100;
-            stack[0xFF] = 0x00;  // Return to $00F0 (NOP loop)
-            stack[0xFE] = 0xF0;
+            stack[0xFF] = 0x00;  // Return to $00EF (RTS adds 1 -> $00F0)
+            stack[0xFE] = 0xEF;
             // Adjust stack pointer to account for pushed addresses
             cpu_ctx->s_reg = 0xFD;
         }

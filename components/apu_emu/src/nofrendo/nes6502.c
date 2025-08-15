@@ -2461,13 +2461,18 @@ end_execute:
    
    /* 異常なCPU状態を検出（エラーは常に表示） */
    if (PC == 0x0000) {
-       printf("[CPU_ERROR] PC became $0000 - this is abnormal!\n");
-       if (CPU_DEBUG) {
+       static int error_count = 0;
+       error_count++;
+       if (error_count <= 3) {
+           printf("[CPU_ERROR] PC became $0000 - this is abnormal! (count: %d)\n", error_count);
            printf("[CPU_ERROR] Final registers: A=$%02X X=$%02X Y=$%02X S=$%02X\n", 
                   A, X, Y, S);
            printf("[CPU_ERROR] Executed %d cycles, remaining=%d\n", 
                   cpu.total_cycles - old_cycles, remaining_cycles);
        }
+       
+       // 強制終了でスタックオーバーフローを防ぐ
+       remaining_cycles = 0;
    }
    
    if (CPU_DEBUG && S < 0x80) {
