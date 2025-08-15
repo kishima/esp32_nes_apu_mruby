@@ -970,7 +970,7 @@ public:
         nes6502_execute(500);
         
         // Ensure APU channels are enabled for NSF playback
-        if (play_count <= 5) {
+        if (play_count == 1) {
             apu_write(0x4015, 0x1F);  // Enable all APU channels
         }
     }

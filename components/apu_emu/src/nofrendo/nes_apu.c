@@ -646,7 +646,6 @@ void apu_write(uint32 address, uint8 value)
    
    /* デバッグ: APU書き込みを表示 */
    static int write_count = 0;
-#ifdef ESP_PLATFORM
    static uint32_t last_write_time = 0;
    uint32_t current_time = esp_timer_get_time() / 1000;  // ミリ秒
    
@@ -654,11 +653,6 @@ void apu_write(uint32 address, uint8 value)
        printf("APU_WRITE[%d]: addr=$%04X, val=$%02X (time=%lu ms, delta=%lu ms)\n", 
               write_count, address, value, current_time, current_time - last_write_time);
    }
-#else
-   if (APU_WRITE_DEBUG) {
-       printf("APU_WRITE[%d]: addr=$%04X, val=$%02X\n", write_count, address, value);
-   }
-#endif
    
    // 特別なレジスタの場合は詳細情報を表示（チャンネル有効化は常に表示）
    if (address == 0x4015) {
