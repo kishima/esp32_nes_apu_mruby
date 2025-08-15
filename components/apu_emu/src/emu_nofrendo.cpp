@@ -330,98 +330,98 @@ class EmuNsfPlay : public Emu {
     static constexpr bool INIT_DEBUG = false;         // 初期化ログ
     
     // APUメモリページの手動設定
-    void nsf_setup_apu_memory_page() {
-        if (NSF_DEBUG) printf("NSF: Setting up APU memory page at $4000-$40FF\n");
+    // void nsf_setup_apu_memory_page() {
+    //     if (NSF_DEBUG) printf("NSF: Setting up APU memory page at $4000-$40FF\n");
         
-        // APUレジスタ用のメモリ領域を確保
-        static uint8_t apu_memory_page[256];
-        memset(apu_memory_page, 0, sizeof(apu_memory_page));
+    //     // APUレジスタ用のメモリ領域を確保
+    //     static uint8_t apu_memory_page[256];
+    //     memset(apu_memory_page, 0, sizeof(apu_memory_page));
         
-        // CPU contextのメモリページテーブルに直接設定
-        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-        if (cpu_ctx) {
-            cpu_ctx->mem_page[0x40] = apu_memory_page;
-            if (NSF_DEBUG) printf("NSF: APU memory page set at %p\n", apu_memory_page);
-        } else {
-            printf("NSF: Failed to get CPU context for memory page setup\n");
-        }
-    }
+    //     // CPU contextのメモリページテーブルに直接設定
+    //     nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+    //     if (cpu_ctx) {
+    //         cpu_ctx->mem_page[0x40] = apu_memory_page;
+    //         if (NSF_DEBUG) printf("NSF: APU memory page set at %p\n", apu_memory_page);
+    //     } else {
+    //         printf("NSF: Failed to get CPU context for memory page setup\n");
+    //     }
+    // }
     
     // NSF ROMメモリページの手動設定
-    void nsf_setup_rom_memory_page() {
-        if (MEMORY_DEBUG) printf("NSF: Setting up NSF ROM memory mapping\n");
+    // void nsf_setup_rom_memory_page() {
+    //     if (MEMORY_DEBUG) printf("NSF: Setting up NSF ROM memory mapping\n");
         
-        if (!_nofrendo_rom) {
-            printf("NSF: No NSF ROM data available\n");
-            return;
-        }
+    //     if (!_nofrendo_rom) {
+    //         printf("NSF: No NSF ROM data available\n");
+    //         return;
+    //     }
         
-        // NSFデータのヘッダをスキップして、実際の音楽データを取得
-        uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
-        size_t nsf_data_size = _nsf_size - sizeof(NSFHeader);
+    //     // NSFデータのヘッダをスキップして、実際の音楽データを取得
+    //     uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
+    //     size_t nsf_data_size = _nsf_size - sizeof(NSFHeader);
         
-        if (MEMORY_DEBUG) {
-            printf("NSF: NSF data size: %zu bytes, header size: %zu bytes\n", nsf_data_size, sizeof(NSFHeader));
-            printf("NSF: First 16 bytes at $8000: ");
-            for (int i = 0; i < 16 && i < nsf_data_size; i++) {
-                printf("%02X ", nsf_data[i]);
-            }
-            printf("\n");
-        }
+    //     if (MEMORY_DEBUG) {
+    //         printf("NSF: NSF data size: %zu bytes, header size: %zu bytes\n", nsf_data_size, sizeof(NSFHeader));
+    //         printf("NSF: First 16 bytes at $8000: ");
+    //         for (int i = 0; i < 16 && i < nsf_data_size; i++) {
+    //             printf("%02X ", nsf_data[i]);
+    //         }
+    //         printf("\n");
+    //     }
         
-        // CPU contextのメモリページテーブルにNSFデータをマップ
-        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-        if (cpu_ctx) {
-            // 小さなNSFファイルに対応するため、データサイズをチェック
-            // メモリページインデックスは12ビットシフトで計算される
-            // $8000 >> 12 = 8, $9000 >> 12 = 9, など
-            // $8000-$8FFF page (index 8) - always map the first page
-            cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT] = nsf_data;
+    //     // CPU contextのメモリページテーブルにNSFデータをマップ
+    //     nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+    //     if (cpu_ctx) {
+    //         // 小さなNSFファイルに対応するため、データサイズをチェック
+    //         // メモリページインデックスは12ビットシフトで計算される
+    //         // $8000 >> 12 = 8, $9000 >> 12 = 9, など
+    //         // $8000-$8FFF page (index 8) - always map the first page
+    //         cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT] = nsf_data;
             
-            // 残りのページは利用可能なデータがある場合のみマップ
-            if (nsf_data_size > 0x1000) {
-                cpu_ctx->mem_page[0x9000 >> NES6502_BANKSHIFT] = nsf_data + 0x1000; // $9000-$9FFF
-            } else {
-                // データが不足している場合は最初のページを繰り返し使用
-                cpu_ctx->mem_page[0x9000 >> NES6502_BANKSHIFT] = nsf_data;
-            }
+    //         // 残りのページは利用可能なデータがある場合のみマップ
+    //         if (nsf_data_size > 0x1000) {
+    //             cpu_ctx->mem_page[0x9000 >> NES6502_BANKSHIFT] = nsf_data + 0x1000; // $9000-$9FFF
+    //         } else {
+    //             // データが不足している場合は最初のページを繰り返し使用
+    //             cpu_ctx->mem_page[0x9000 >> NES6502_BANKSHIFT] = nsf_data;
+    //         }
             
-            if (nsf_data_size > 0x2000) {
-                cpu_ctx->mem_page[0xA000 >> NES6502_BANKSHIFT] = nsf_data + 0x2000; // $A000-$AFFF
-            } else {
-                cpu_ctx->mem_page[0xA000 >> NES6502_BANKSHIFT] = nsf_data;
-            }
+    //         if (nsf_data_size > 0x2000) {
+    //             cpu_ctx->mem_page[0xA000 >> NES6502_BANKSHIFT] = nsf_data + 0x2000; // $A000-$AFFF
+    //         } else {
+    //             cpu_ctx->mem_page[0xA000 >> NES6502_BANKSHIFT] = nsf_data;
+    //         }
             
-            if (nsf_data_size > 0x3000) {
-                cpu_ctx->mem_page[0xB000 >> NES6502_BANKSHIFT] = nsf_data + 0x3000; // $B000-$BFFF
-            } else {
-                cpu_ctx->mem_page[0xB000 >> NES6502_BANKSHIFT] = nsf_data;
-            }
+    //         if (nsf_data_size > 0x3000) {
+    //             cpu_ctx->mem_page[0xB000 >> NES6502_BANKSHIFT] = nsf_data + 0x3000; // $B000-$BFFF
+    //         } else {
+    //             cpu_ctx->mem_page[0xB000 >> NES6502_BANKSHIFT] = nsf_data;
+    //         }
             
-            // $C000-$FFFF pages - 小さいNSFでは最初のページを再利用
-            cpu_ctx->mem_page[0xC000 >> NES6502_BANKSHIFT] = nsf_data; // $C000-$CFFF
-            cpu_ctx->mem_page[0xD000 >> NES6502_BANKSHIFT] = nsf_data; // $D000-$DFFF
-            cpu_ctx->mem_page[0xE000 >> NES6502_BANKSHIFT] = nsf_data; // $E000-$EFFF
-            cpu_ctx->mem_page[0xF000 >> NES6502_BANKSHIFT] = nsf_data; // $F000-$FFFF
+    //         // $C000-$FFFF pages - 小さいNSFでは最初のページを再利用
+    //         cpu_ctx->mem_page[0xC000 >> NES6502_BANKSHIFT] = nsf_data; // $C000-$CFFF
+    //         cpu_ctx->mem_page[0xD000 >> NES6502_BANKSHIFT] = nsf_data; // $D000-$DFFF
+    //         cpu_ctx->mem_page[0xE000 >> NES6502_BANKSHIFT] = nsf_data; // $E000-$EFFF
+    //         cpu_ctx->mem_page[0xF000 >> NES6502_BANKSHIFT] = nsf_data; // $F000-$FFFF
             
-            if (MEMORY_DEBUG) printf("NSF: ROM mapped from $8000-$FFFF at %p (size: %zu bytes)\n", nsf_data, nsf_data_size);
+    //         if (MEMORY_DEBUG) printf("NSF: ROM mapped from $8000-$FFFF at %p (size: %zu bytes)\n", nsf_data, nsf_data_size);
             
-            if (MEMORY_DEBUG) {
-                // メモリページ設定直後の状態を確認
-                printf("NSF: Verifying memory page setup...\n");
-                for (int i = 8; i <= 15; i++) {
-                    printf("NSF: mem_page[%d] ($%04X) = %p\n", i, i << NES6502_BANKSHIFT, cpu_ctx->mem_page[i]);
-                }
+    //         if (MEMORY_DEBUG) {
+    //             // メモリページ設定直後の状態を確認
+    //             printf("NSF: Verifying memory page setup...\n");
+    //             for (int i = 8; i <= 15; i++) {
+    //                 printf("NSF: mem_page[%d] ($%04X) = %p\n", i, i << NES6502_BANKSHIFT, cpu_ctx->mem_page[i]);
+    //             }
                 
-                // グローバルCPUの状態も確認
-                nes6502_context global_ctx;
-                nes6502_getcontext(&global_ctx);
-                printf("NSF: Global CPU mem_page[8] ($8000) = %p\n", global_ctx.mem_page[8]);
-            }
-        } else {
-            printf("NSF: Failed to get CPU context for ROM mapping\n");
-        }
-    }
+    //             // グローバルCPUの状態も確認
+    //             nes6502_context global_ctx;
+    //             nes6502_getcontext(&global_ctx);
+    //             printf("NSF: Global CPU mem_page[8] ($8000) = %p\n", global_ctx.mem_page[8]);
+    //         }
+    //     } else {
+    //         printf("NSF: Failed to get CPU context for ROM mapping\n");
+    //     }
+    // }
     
     // NSF専用APUハンドラ設定
     bool nsf_setup_apu_handlers() {
@@ -552,21 +552,9 @@ public:
         // CRITICAL: Synchronize the context to ensure nes6502_execute uses our values
         nes6502_setcontext(cpu_ctx);
         
-        // Create safe dummy return area with NOP loop (一度だけ設定)
-        uint8_t *zp = cpu_ctx->mem_page[0];  // Zero page $0000-$00FF
-        if (zp) {
-            // Create NOP loop at $00F0: NOP; JMP $00F0
-            zp[0xF0] = 0xEA;  // NOP instruction
-            zp[0xF1] = 0x4C;  // JMP absolute instruction
-            zp[0xF2] = 0xF0;  // Jump target low byte ($00F0)
-            zp[0xF3] = 0x00;  // Jump target high byte
-            
-            // Push dummy return address onto stack - 毎回新しいスタックで設定
-            uint8_t *stack = cpu_ctx->mem_page[0] + 0x100;
-            stack[0xFF] = 0x00;  // Return to $00F0 (NOP loop) high byte
-            stack[0xFE] = 0xEF;  // Return to $00EF (before NOP loop) low byte
-            cpu_ctx->s_reg = 0xFD;  // スタックポインタを設定
-        }
+        // NSF PLAYルーチンのRTSはスタックアンダーフローで終了します
+        // スタックポインタを$FFに設定して、RTSがアンダーフローを検出できるようにする
+        cpu_ctx->s_reg = 0xFF;  // スタックを空に設定
         
         //printf("NSF: CPU setup for PLAY at $%04X, SP=$%02X\n", _nsf_header.play_addr, cpu_ctx->s_reg);
     }
@@ -702,22 +690,9 @@ public:
         printf("NSF: CPU INIT setup - PC=$%04X A=$%02X X=$%02X\n", 
                cpu_ctx->pc_reg, cpu_ctx->a_reg, cpu_ctx->x_reg);
         
-        // Create safe dummy return area with NOP loop for INIT
-        uint8_t *zp = cpu_ctx->mem_page[0];  // Zero page $0000-$00FF
-        if (zp) {
-            // Create NOP loop at $00F0: NOP; JMP $00F0 (same as PLAY)
-            zp[0xF0] = 0xEA;  // NOP instruction
-            zp[0xF1] = 0x4C;  // JMP absolute instruction  
-            zp[0xF2] = 0xF0;  // Jump target low byte ($00F0)
-            zp[0xF3] = 0x00;  // Jump target high byte
-            
-            // Push dummy return address onto stack for INIT RTS
-            uint8_t *stack = cpu_ctx->mem_page[0] + 0x100;
-            stack[0xFF] = 0x00;  // Return to $00EF (RTS adds 1 -> $00F0)
-            stack[0xFE] = 0xEF;
-            // Adjust stack pointer to account for pushed addresses
-            cpu_ctx->s_reg = 0xFD;
-        }
+        // NSF INITルーチンのRTSはスタックアンダーフローで終了します
+        // スタックポインタを$FFに設定して、RTSがアンダーフローを検出できるようにする
+        cpu_ctx->s_reg = 0xFF;  // スタックを空に設定
         
         _nsf_initialized = true;
         return true;
