@@ -36,11 +36,6 @@
 #define JSR_DEBUG       0    // JSR命令詳細ログ
 #define OPCODE_DEBUG    0    // オペコード実行ログ
 
-#ifdef __GNUC__
-#define  NES6502_JUMPTABLE
-#endif /* __GNUC__ */
-
-
 #define  ADD_CYCLES(x) \
 { \
    remaining_cycles -= (x); \
@@ -1381,8 +1376,6 @@ uint32 nes6502_getcycles(bool reset_flag)
 
 #define  MIN(a,b)    (((a) < (b)) ? (a) : (b))
 
-#ifdef NES6502_JUMPTABLE
-
 #define  OPCODE_BEGIN(xx)  op##xx:
 #ifdef NES6502_DISASM
 
@@ -1410,12 +1403,6 @@ uint32 nes6502_getcycles(bool reset_flag)
 
 #endif /* !NES6502_DISASM */
 
-#else /* !NES6502_JUMPTABLE */
-#define  OPCODE_BEGIN(xx)  case 0x##xx:
-#define  OPCODE_END        break;
-#endif /* !NES6502_JUMPTABLE */
-
-
 /* Execute instructions until count expires
 **
 ** Returns the number of cycles *actually* executed, which will be
@@ -1441,8 +1428,6 @@ int nes6502_execute(int timeslice_cycles)
    uint32 PC;
    uint8 A, X, Y, S;
 
-#ifdef NES6502_JUMPTABLE
-   
    static const void *opcode_table[256] =
    {
       &&op00, &&op01, &&op02, &&op03, &&op04, &&op05, &&op06, &&op07,
@@ -1478,8 +1463,6 @@ int nes6502_execute(int timeslice_cycles)
       &&opF0, &&opF1, &&opF2, &&opF3, &&opF4, &&opF5, &&opF6, &&opF7,
       &&opF8, &&opF9, &&opFA, &&opFB, &&opFC, &&opFD, &&opFE, &&opFF
    };
-
-#endif /* NES6502_JUMPTABLE */
 
    remaining_cycles = timeslice_cycles;
 
@@ -1523,7 +1506,6 @@ int nes6502_execute(int timeslice_cycles)
       ADD_CYCLES(INT_CYCLES);
    }
 
-#ifdef NES6502_JUMPTABLE
    /* fetch first instruction - 初期命令フェッチではPCを事前にインクリメントしない */
    {
       static int first_fetch_count = 0;
@@ -1535,20 +1517,6 @@ int nes6502_execute(int timeslice_cycles)
       PC++; // 読み取り後にPCをインクリメント
       goto *opcode_table[first_opcode];
    }
-
-#else /* !NES6502_JUMPTABLE */
-
-   /* Continue until we run out of cycles */
-   while (remaining_cycles > 0)
-   {
-#ifdef NES6502_DISASM
-      log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S));
-#endif /* NES6502_DISASM */
-
-      /* Fetch and execute instruction */
-      switch (bank_readbyte(PC++))
-      {
-#endif /* !NES6502_JUMPTABLE */
 
       OPCODE_BEGIN(00)  /* BRK */
          BRK();
@@ -2484,7 +2452,6 @@ int nes6502_execute(int timeslice_cycles)
          ISB(7, ABS_IND_X, mem_writebyte, addr);
          OPCODE_END
 
-#ifdef NES6502_JUMPTABLE
 end_execute:
    if (show_debug) {
        printf("[CPU_DEBUG] nes6502_execute: end PC=$%04X, executed=%d cycles\n", 
@@ -2506,11 +2473,6 @@ end_execute:
    if (CPU_DEBUG && S < 0x80) {
        printf("[CPU_WARNING] Stack pointer unusually low: SP=$%02X\n", S);
    }
-
-#else /* !NES6502_JUMPTABLE */
-      }
-   }
-#endif /* !NES6502_JUMPTABLE */
 
    /* store local copy of regs */
    STORE_LOCAL_REGS();
