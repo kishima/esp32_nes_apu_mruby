@@ -887,16 +887,40 @@ public:
     void nsf_execute_init_routine() {
         printf("NSF: Executing INIT routine at $%04X\n", _nsf_header.init_addr);
         
-        // メモリページを事前に設定
-        printf("NSF: Pre-setting up memory pages before context access...\n");
-        nsf_setup_apu_memory_page();
-        nsf_setup_rom_memory_page();
-        
-        // CPU contextを直接取得して状態確認（nes6502_getcontextを回避）
+        // CPU contextを直接取得して状態確認
         nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
         if (!cpu_ctx) {
             printf("ERROR: No CPU context available\n");
             return;
+        }
+        
+        // NSFデータをメモリページに直接マップ
+        if (_nofrendo_rom) {
+            uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
+            size_t nsf_data_size = _nsf_size - sizeof(NSFHeader);
+            
+            // $8000ページにNSFデータをマップ
+            cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT] = nsf_data;
+            
+            // APUメモリページの設定
+            static uint8_t apu_memory_page[256];
+            cpu_ctx->mem_page[0x40] = apu_memory_page;
+            
+            // CPUコンテキストを同期
+            nes6502_setcontext(cpu_ctx);
+            
+            // setcontext後に再度メモリページを確認・設定
+            cpu_ctx = nes_getcontextptr()->cpu;
+            if (cpu_ctx) {
+                if (!cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT]) {
+                    printf("NSF: Re-mapping memory after setcontext\n");
+                    cpu_ctx->mem_page[0x8000 >> NES6502_BANKSHIFT] = nsf_data;
+                    cpu_ctx->mem_page[0x40] = apu_memory_page;
+                }
+            }
+            
+            printf("NSF: NSF data mapped at $8000: %02X %02X %02X %02X\n", 
+                   nsf_data[0], nsf_data[1], nsf_data[2], nsf_data[3]);
         }
         
         printf("DEBUG: INIT start PC=$%04X SP=$%02X\n", cpu_ctx->pc_reg, cpu_ctx->s_reg);
@@ -905,10 +929,11 @@ public:
         printf("DEBUG: Memory pages: page[0]=%p, page[0x40]=%p\n", 
                cpu_ctx->mem_page[0], cpu_ctx->mem_page[0x40]);
         
-        if (cpu_ctx->mem_page[0x80]) {
-            uint8_t *rom = cpu_ctx->mem_page[0x80];
-            printf("DEBUG: ROM at $8000: %02X %02X %02X %02X\n", 
-                   rom[0], rom[1], rom[2], rom[3]);
+        int bank_8000 = 0x8000 >> NES6502_BANKSHIFT;
+        if (cpu_ctx->mem_page[bank_8000]) {
+            uint8_t *rom = cpu_ctx->mem_page[bank_8000];
+            printf("DEBUG: ROM at $8000 (bank %d): %02X %02X %02X %02X\n", 
+                   bank_8000, rom[0], rom[1], rom[2], rom[3]);
         } else {
             printf("ERROR: ROM still not mapped at $8000 after setup\n");
             return;
@@ -938,14 +963,6 @@ public:
                 break;
             }
         }
-        
-        //int end_time = esp_log_timestamp();
-        // 
-        // デバッグ：実行後のCPU状態を確認
-        // if (cpu_ctx) {
-        //     printf("DEBUG: INIT end PC=$%04X SP=$%02X, executed=%d cycles, time=%dms\n", 
-        //            cpu_ctx->pc_reg, cpu_ctx->s_reg, executed_total, end_time - start_time);
-        // }
                
         printf("NSF: INIT routine executed (%d total cycles)\n", executed_total);
     }
@@ -968,11 +985,6 @@ public:
         }
         
         nes6502_execute(500);
-        
-        // Ensure APU channels are enabled for NSF playback
-        if (play_count == 1) {
-            apu_write(0x4015, 0x1F);  // Enable all APU channels
-        }
     }
 
     // Initialize NSF playback for specific song
