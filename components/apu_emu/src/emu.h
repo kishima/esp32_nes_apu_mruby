@@ -128,18 +128,7 @@ public:
     virtual const uint32_t* composite_palette();
 };
 
-// Utility functions for file handling
-std::string get_ext(const std::string& filename);
-std::string to_string(int value);
-
-// HID stub functions
-extern "C" {
-    void hid_init();
-    void hid_update();
-}
-
 // for loading carts
-std::string get_ext(const std::string& s);
 extern "C" uint8_t* map_file(const char* path, int len);
 extern "C" void unmap_file(uint8_t* ptr);
 extern "C" FILE* mkfile(const char* path);
@@ -147,7 +136,6 @@ extern "C" FILE* mkfile(const char* path);
 void audio_write_16(const int16_t* s, int len, int channels);
 uint32_t generic_map(uint32_t m, const uint32_t* target);
 
-Emu* NewNofrendo(int ntsc = 1);
 Emu* NewNsfplayer(int ntsc = 1);
 
 #endif /* emu_hpp */

@@ -25,8 +25,6 @@
 #include <stdlib.h>
 #include "soc/rtc.h"
 
-#define PERF  // some stats about where we spend our time
-
 // デバッグログ制御フラグ
 #define AUDIO_DEBUG 0  // オーディオフレーム詳細ログ
 
@@ -34,36 +32,12 @@
 #include "video_out.h"
 
 // esp_8_bit
-//  Choose one of the video standards: PAL,NTSC
 #define VIDEO_STANDARD NTSC
 
 Emu* _emu = 0;
 int _sample_count = -1;
-//uint32_t _frame_time = 0;
-// uint32_t _drawn = 1;
 
 using namespace std;
-
-string get_ext(const string& s)
-{
-    string ext;
-    auto i = s.find_last_of(".");
-    if (i > 0) {
-        ext = s.substr(i+1);
-        for (i = 0; i < ext.length(); i++)
-            ext[i] = tolower(ext[i]);
-    }
-    return ext;
-}
-
-// missing in arduino?
-string to_string(int i)
-{
-    char buf[32];
-    sprintf(buf,"%d",i);
-    return buf;
-}
-
 
 void update_audio()
 {
@@ -140,7 +114,6 @@ void emu_task(void* arg)
         vTaskSuspend(NULL);  // Suspend this task to prevent crashes
         return;
     }
-    //_drawn = _frame_counter;
 
     // 60Hz timing constants
     const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
@@ -207,29 +180,6 @@ esp_err_t mount_filesystem()
   return e;
 }
 
-#ifdef PERF
-void perf()
-{
-  //TODO: update for audio
-  #if 0
-  static int _next = 0;
-  if (_drawn >= _next) {
-    float elapsed_us = 120*1000000/(_emu->standard ? 60 : 50);
-    _next = _drawn + 120;
-    
-    printf("frame_time:%lu drawn:%lu displayed:%d blit_ticks:%lu->%lu, isr time:%2.2f%%\n",
-      _frame_time/240,_drawn,_frame_counter,_blit_ticks_min,_blit_ticks_max,(_isr_us*100)/elapsed_us);
-      
-    _blit_ticks_min = 0xFFFFFFFF;
-    _blit_ticks_max = 0;
-    _isr_us = 0;
-  }
-  #endif
-}
-#else
-void perf(){};
-#endif
-
 extern "C" void app_main(void)
 {    
   printf("app_main on core %d\n", xPortGetCoreID()); 
@@ -257,6 +207,5 @@ extern "C" void app_main(void)
   while(true){
     vTaskDelay(100);
     // Dump some stats
-    perf();
   }
 }
