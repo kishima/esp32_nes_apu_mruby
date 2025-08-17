@@ -127,8 +127,10 @@ void emu_task(void* arg)
     {
       uint64_t frame_start = esp_timer_get_time();
       
+      printf("======== 60Hz Loop =========\n");
       // NSF audio processing
       update_audio();
+      printf("audio update done\n");
       
       uint64_t frame_end = esp_timer_get_time();
       uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);

@@ -605,9 +605,12 @@ public:
         static uint32_t play_count = 0;
         play_count++;
         
-        // 毎回新しいセットアップ
+        // 実行前に必ずCPUコンテキストを取得して同期
         nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
         if (!cpu_ctx) return;
+        
+        // 最新のCPU状態を取得（前回の実行結果を反映）
+        nes6502_getcontext(cpu_ctx);
         
         // メモリページを再設定
         if (_nofrendo_rom) {
@@ -615,20 +618,14 @@ public:
             cpu_ctx->mem_page[8] = nsf_data;
         }
         
-        // PLAYアドレスを毎回再設定（setcontext後に再設定）
+        // PLAYアドレスを毎回再設定
         cpu_ctx->pc_reg = _nsf_header.play_addr;
         cpu_ctx->s_reg = 0xFF;  // スタックを空に設定
         
         // コンテキストを同期
         nes6502_setcontext(cpu_ctx);
         
-        // setcontext後に再度CPUコンテキストを取得して確認・修正
-        cpu_ctx = nes_getcontextptr()->cpu;
-        if (cpu_ctx) {
-            cpu_ctx->pc_reg = _nsf_header.play_addr;  // 再度設定
-            cpu_ctx->s_reg = 0xFF;
-        }
-        
+        // NSF PLAY実行
         nes6502_execute(500);
     }
 
@@ -871,8 +868,9 @@ public:
         }
 
         // Execute INIT routine after NES system is fully initialized
-        printf("NSF: Executing INIT routine...\n");
+        printf("====== NSF: Executing INIT routine...\n");
         nsf_execute_init_routine();   // Execute INIT routine safely
+        printf("====== NSF: Executing INIT routine DONE\n");
         return 0;
     }
 
