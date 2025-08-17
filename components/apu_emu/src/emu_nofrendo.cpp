@@ -524,40 +524,6 @@ public:
         return true;
     }
 
-    // Set up CPU for NSF PLAY routine execution
-    void nsf_setup_play() {
-        if (!_nsf_initialized) {
-            printf("NSF: Not initialized, cannot setup PLAY\n");
-            return;
-        }
-        
-        // Get direct CPU context access
-        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-        if (!cpu_ctx) {
-            printf("NSF: No CPU context for PLAY setup\n");
-            return;
-        }
-        
-        // Check if memory pages are properly initialized
-        if (!cpu_ctx->mem_page[0]) {
-            printf("NSF: CPU memory not initialized, skipping PLAY setup\n");
-            return;
-        }
-        
-        // Set up CPU for PLAY routine - 毎回新しい状態で始める
-        cpu_ctx->pc_reg = _nsf_header.play_addr;  // PLAY routine address
-        cpu_ctx->s_reg = 0xFF;  // スタックポインタをリセット
-        cpu_ctx->p_reg = 0x04 | 0x02 | 0x20;     // I_FLAG | Z_FLAG | R_FLAG
-        
-        // CRITICAL: Synchronize the context to ensure nes6502_execute uses our values
-        nes6502_setcontext(cpu_ctx);
-        
-        // NSF PLAYルーチンのRTSはスタックアンダーフローで終了します
-        // スタックポインタを$FFに設定して、RTSがアンダーフローを検出できるようにする
-        cpu_ctx->s_reg = 0xFF;  // スタックを空に設定
-        
-        //printf("NSF: CPU setup for PLAY at $%04X, SP=$%02X\n", _nsf_header.play_addr, cpu_ctx->s_reg);
-    }
 
     // Execute NSF INIT routine safely without full NES frame rendering
     void nsf_execute_init_routine() {
@@ -639,15 +605,28 @@ public:
         static uint32_t play_count = 0;
         play_count++;
         
-        nsf_setup_play();
+        // 毎回新しいセットアップ
+        nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
+        if (!cpu_ctx) return;
         
+        // メモリページを再設定
         if (_nofrendo_rom) {
-            nes6502_context* cpu_ctx = nes_getcontextptr()->cpu;
-            if (cpu_ctx) {
-                uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
-                cpu_ctx->mem_page[8] = nsf_data;
-                nes6502_setcontext(cpu_ctx);
-            }
+            uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
+            cpu_ctx->mem_page[8] = nsf_data;
+        }
+        
+        // PLAYアドレスを毎回再設定（setcontext後に再設定）
+        cpu_ctx->pc_reg = _nsf_header.play_addr;
+        cpu_ctx->s_reg = 0xFF;  // スタックを空に設定
+        
+        // コンテキストを同期
+        nes6502_setcontext(cpu_ctx);
+        
+        // setcontext後に再度CPUコンテキストを取得して確認・修正
+        cpu_ctx = nes_getcontextptr()->cpu;
+        if (cpu_ctx) {
+            cpu_ctx->pc_reg = _nsf_header.play_addr;  // 再度設定
+            cpu_ctx->s_reg = 0xFF;
         }
         
         nes6502_execute(500);
@@ -901,12 +880,6 @@ public:
     {
         if (_nofrendo_rom && _nsf_initialized) {
             _lines = NULL;
-            
-            // Set up CPU for PLAY routine only once per song
-            if (!_play_setup_done) {
-                nsf_setup_play();
-                _play_setup_done = true;
-            }
             
             // Execute NSF PLAY routine safely
             nsf_execute_play_routine();
