@@ -923,7 +923,7 @@
 { \
    if (S >= 0xFE) { \
       /* スタックアンダーフロー検出: NSFルーチン終了 */ \
-      printf("CPU: RTS stack underflow at PC=$%04X, terminating execution\n", PC); \
+      /* printf("CPU: RTS stack underflow at PC=$%04X, terminating execution\n", PC); */ \
       remaining_cycles = -1; /* 強制的に負の値にして即座に終了 */ \
       ADD_CYCLES(6); \
       goto end_execute; /* 直接終了ラベルへジャンプ */ \

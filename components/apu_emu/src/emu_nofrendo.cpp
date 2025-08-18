@@ -601,7 +601,7 @@ public:
 
     void nsf_execute_play_routine() {
         if (!_nsf_initialized) return;
-        static bool debug_print = true;
+        static bool debug_print = false;
         
         static uint32_t play_count = 0;
         play_count++;
