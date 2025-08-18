@@ -20,6 +20,8 @@
 
 #define DISABLE_VIDEO_INTR
 
+//#define USE_I2S_DAC  // コメントアウト: PWM使用、アンコメント: I2S DAC使用
+
 int _pal_ = 0;
 
 #define _USE_MATH_DEFINES
@@ -48,6 +50,10 @@ int _pal_ = 0;
 #include "driver/gpio.h"
 #include "driver/i2s.h"
 #include "driver/gptimer.h"
+
+#ifdef USE_I2S_DAC
+#include "driver/i2s_std.h"
+#endif
 
 
 //====================================================================================================
@@ -239,6 +245,44 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 }
 #endif
 
+#ifdef USE_I2S_DAC
+// I2S DACハンドル
+i2s_chan_handle_t i2s_tx_handle = NULL;
+
+// I2S初期化関数
+esp_err_t init_i2s_dac() {
+    printf("Initializing I2S for PCM5102A...\n");
+    
+    // I2Sチャンネル設定
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &i2s_tx_handle, NULL));
+    
+    // I2S標準設定
+    i2s_std_config_t std_cfg = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(15720),  // 15.7kHz sample rate
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+        .gpio_cfg = {
+            .mclk = I2S_GPIO_UNUSED,
+            .bclk = GPIO_NUM_26,
+            .ws = GPIO_NUM_25,
+            .dout = GPIO_NUM_22,
+            .din = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv = false,
+            },
+        },
+    };
+    
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_tx_handle, &std_cfg));
+    ESP_ERROR_CHECK(i2s_channel_enable(i2s_tx_handle));
+    
+    printf("I2S initialized successfully for PCM5102A\n");
+    return ESP_OK;
+}
+#endif
+
 void video_init_hw(int line_width, int samples_per_cc)
 {
     printf("video_init_hw: line_width=%d, samples_per_cc=%d\n", line_width, samples_per_cc);
@@ -247,9 +291,17 @@ void video_init_hw(int line_width, int samples_per_cc)
     // setup apll 4x NTSC or PAL colorburst rate
     start_dma(line_width,samples_per_cc,1);
     #else
+    
+    #ifdef USE_I2S_DAC
+    // I2S DACを初期化
+    printf("Use I2S DAC for audio (PCM5102A)\n");    
+    init_i2s_dac();
+    #else
     // Use NTSC audio sample rate: ~15.7kHz
-    printf("Use Timer Interrupt for audio\n");    
+    printf("Use Timer Interrupt for PWM audio\n");    
     setup_audio_timer(0.0157); // 15.7kHz sample rate
+    #endif
+    
     #endif
     
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
@@ -303,6 +355,29 @@ void video_init_hw(int line_width, int samples_per_cc)
 }
 
 // send an audio sample every scanline (15720hz for ntsc, 15600hz for PAL)
+#ifdef USE_I2S_DAC
+// I2S DACバッファ
+int16_t i2s_audio_buffer[64];  // 小さなバッファでI2S出力
+volatile int i2s_buf_write_pos = 0;
+
+inline void IRAM_ATTR audio_sample(uint8_t s)
+{
+    // 6bit unsigned (0-63) から 16bit signed (-32768 to 32767) に変換
+    int16_t sample_16bit = ((int16_t)(s - 32)) << 10;  // -32～31 → -32768～31744
+    
+    // I2Sバッファに格納
+    i2s_audio_buffer[i2s_buf_write_pos++] = sample_16bit;
+    
+    // バッファが満杯になったらI2S出力
+    if (i2s_buf_write_pos >= sizeof(i2s_audio_buffer)/sizeof(i2s_audio_buffer[0])) {
+        size_t bytes_written;
+        // 非ブロッキングで出力
+        i2s_channel_write(i2s_tx_handle, i2s_audio_buffer, sizeof(i2s_audio_buffer), &bytes_written, 0);
+        i2s_buf_write_pos = 0;
+    }
+}
+#else
+// PWM audio sample (従来実装)
 inline void IRAM_ATTR audio_sample(uint8_t s)
 {
     auto& reg = LEDC.channel_group[0].channel[0];
@@ -311,6 +386,7 @@ inline void IRAM_ATTR audio_sample(uint8_t s)
     reg.conf1.duty_start = 1; // When duty_num duty_cycle and duty_scale has been configured. these register won't take effect until set duty_start. this bit is automatically cleared by hardware
     reg.conf0.clk_en = 1;
 }
+#endif
 
 //  Appendix
 
@@ -805,9 +881,9 @@ void IRAM_ATTR pal_sync(uint16_t* line, int i)
 #endif
 
 //  audio is buffered as 6 bit unsigned samples
-uint8_t _audio_buffer[1024];
-uint32_t _audio_r = 0;
-uint32_t _audio_w = 0;
+uint8_t _audio_buffer[1024] __attribute__((aligned(4)));
+uint32_t volatile _audio_r = 0;
+uint32_t volatile _audio_w = 0;
 void audio_write_16(const int16_t* s, int len, int channels)
 {
     int b;
@@ -937,14 +1013,21 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
 }
 #endif
 
+static uint8_t last_s __attribute__((section(".noinit"))); 
+
 extern "C"
 void IRAM_ATTR audio_isr()
 {
-    ISR_BEGIN();
+    uint32_t r = _audio_r;   // ローカルに取り込み
+    uint32_t w = _audio_w;   // 1回だけ読む（スナップショット）
 
-    uint8_t s = _audio_r < _audio_w ? _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)] : 0x20;
+    uint8_t s;
+    if(_audio_r < _audio_w){
+        s = _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)];
+        last_s = s;
+    }else{
+        s = last_s;
+    } 
     audio_sample(s);
-
-    ISR_END();
 
 }
