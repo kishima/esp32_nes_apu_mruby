@@ -70,7 +70,7 @@ void update_audio()
       }
 #endif
 
-#if 1
+#if 0
     // 手動矩形波生成 (440Hz)
     static uint32_t sample_counter = 0;
     static int wave_state = 1;
