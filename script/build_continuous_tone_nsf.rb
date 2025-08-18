@@ -1,6 +1,51 @@
 #!/usr/bin/env ruby
-# Build continuous tone test NSF
+# Build continuous tone test NSF from assembly source
 # Creates an NSF file that plays continuous tones on all APU channels
+
+require 'json'
+
+# 6502 instruction encoding
+def assemble_line(line)
+  line = line.strip.gsub(/;.*/, '').strip  # Remove comments
+  return [] if line.empty? || line.start_with?(';') || line.start_with?('.') || line.end_with?(':')
+  
+  case line
+  when /^LDA #\$([0-9A-F]+)$/i
+    [0xA9, $1.to_i(16)]
+  when /^STA \$([0-9A-F]+)$/i
+    addr = $1.to_i(16)
+    [0x8D, addr & 0xFF, (addr >> 8) & 0xFF]
+  when /^RTS$/i
+    [0x60]
+  else
+    puts "Warning: Unknown instruction: #{line}"
+    []
+  end
+end
+
+# Read and assemble the .asm file
+def assemble_file(filename)
+  code = []
+  current_org = 0x8000
+  
+  File.readlines(filename).each do |line|
+    line = line.strip
+    
+    if line =~ /^\.org \$([0-9A-F]+)$/i
+      target_org = $1.to_i(16)
+      # Pad to reach target address
+      while (current_org + code.length) < target_org
+        code << 0x00
+      end
+      current_org = target_org
+    else
+      assembled = assemble_line(line)
+      code.concat(assembled)
+    end
+  end
+  
+  code.pack("C*")
+end
 
 # NSF header structure
 nsf_header = [
@@ -30,39 +75,9 @@ nsf_header += [0x00, 0x00].pack("C*")
 # Reserved (4 bytes)
 nsf_header += "\x00" * 4
 
-# 6502 assembly code for NSF
-nsf_code = [
-  # init routine at $8000
-  0xA9, 0x0F,        # LDA #$0F
-  0x8D, 0x15, 0x40,  # STA $4015    ; Enable all channels
-  
-  # Pulse 1 setup (440Hz)
-  0xA9, 0xBF,        # LDA #$BF     ; Duty=10, hold, vol=15
-  0x8D, 0x00, 0x40,  # STA $4000
-  0xA9, 0x00,        # LDA #$00     ; No sweep
-  0x8D, 0x01, 0x40,  # STA $4001
-  0xA9, 0xFD,        # LDA #$FD     ; Period low
-  0x8D, 0x02, 0x40,  # STA $4002
-  0xA9, 0x00,        # LDA #$00     ; Period high
-  0x8D, 0x03, 0x40,  # STA $4003
-  
-  # Pulse 2 setup (523Hz - C5)
-  0xA9, 0xBF,        # LDA #$BF     ; Duty=10, hold, vol=15
-  0x8D, 0x04, 0x40,  # STA $4004
-  0xA9, 0x00,        # LDA #$00     ; No sweep
-  0x8D, 0x05, 0x40,  # STA $4005
-  0xA9, 0x55,        # LDA #$55     ; Period low
-  0x8D, 0x06, 0x40,  # STA $4006
-  0xA9, 0x00,        # LDA #$00     ; Period high
-  0x8D, 0x07, 0x40,  # STA $4007
-  
-  0x60,              # RTS ($801F)
-  
-  # play routine at $8020
-  0xA9, 0x0F,        # LDA #$0F
-  0x8D, 0x15, 0x40,  # STA $4015    ; Keep channels enabled
-  0x60,              # RTS
-].pack("C*")
+# Assemble the code from .asm file
+asm_file = File.join(File.dirname(__FILE__), 'continuous_tone.asm')
+nsf_code = assemble_file(asm_file)
 
 # Pad the code to fill the NSF data area (32KB)
 nsf_data = nsf_code.ljust(32768, "\x00")
