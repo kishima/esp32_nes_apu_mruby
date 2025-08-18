@@ -63,10 +63,30 @@ void update_audio()
     }
     
 #if 0
-    // ランダムなテスト音波形を生成
+      // ランダムなテスト音波形を生成
+      for (int i = 0; i < _sample_count; i++) {
+          // -10000 から 10000 の範囲でランダムな値を生成
+          abuffer[i] = (rand() % 20001) - 10000;
+      }
+#endif
+
+#if 1
+    // 手動矩形波生成 (440Hz)
+    static uint32_t sample_counter = 0;
+    static int wave_state = 1;
+    
+    // NTSC: 15720Hz sample rate, 440Hz = 15720/440 = 35.7 samples per cycle
+    const int samples_per_cycle = 36;  // 約440Hz
+    const int16_t amplitude = 8000;    // APU相当の振幅
+    
     for (int i = 0; i < _sample_count; i++) {
-        // -10000 から 10000 の範囲でランダムな値を生成
-        abuffer[i] = (rand() % 20001) - 10000;
+        // 矩形波: half cycle high, half cycle low
+        if ((sample_counter % samples_per_cycle) < (samples_per_cycle / 2)) {
+            abuffer[i] = amplitude;
+        } else {
+            abuffer[i] = -amplitude;
+        }
+        sample_counter++;
     }
 #else
 
@@ -109,7 +129,7 @@ void emu_task(void* arg)
     srand(esp_timer_get_time());
 
     //emu init
-    std::string rom_file = "/nsf/continuous_tone.nsf";
+    std::string rom_file = "/nsf/continuous_tone_single.nsf";
     //std::string rom_file = "/nsf/test.nsf";
     //std::string rom_file = "/nsf/minimal_test.nsf";
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
@@ -138,6 +158,14 @@ void emu_task(void* arg)
 
       uint32_t buffer_used = _audio_w - _audio_r;
       uint32_t buffer_free = sizeof(_audio_buffer) - buffer_used;
+
+      // Audio buffer 詳細ログ (5秒間隔)
+      static uint32_t detailed_log_frame = 0;
+      if (detailed_log_frame % 300 == 0) {
+          printf("RING_BUFFER[%lu]: w=%lu r=%lu used=%lu free=%lu\n", 
+                 detailed_log_frame, _audio_w & 1023, _audio_r & 1023, buffer_used, buffer_free);
+      }
+      detailed_log_frame++;
 
       // Audio buffer 警告
       if (buffer_used < 100) printf("underflow %ld\n", buffer_used);

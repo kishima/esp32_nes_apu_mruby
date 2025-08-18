@@ -4,6 +4,8 @@
 
 require 'json'
 
+filename = "continuous_tone_single"
+
 # 6502 instruction encoding
 def assemble_line(line)
   line = line.strip.gsub(/;.*/, '').strip  # Remove comments
@@ -76,7 +78,7 @@ nsf_header += [0x00, 0x00].pack("C*")
 nsf_header += "\x00" * 4
 
 # Assemble the code from .asm file
-asm_file = File.join(File.dirname(__FILE__), 'continuous_tone.asm')
+asm_file = File.join(File.dirname(__FILE__), "#{filename}.asm")
 nsf_code = assemble_file(asm_file)
 
 # Pad the code to fill the NSF data area (32KB)
@@ -86,12 +88,8 @@ nsf_data = nsf_code.ljust(32768, "\x00")
 nsf_file = nsf_header + nsf_data
 
 # Write the NSF file
-File.open('continuous_tone.nsf', 'wb') do |f|
+File.open("#{filename}.nsf", 'wb') do |f|
   f.write(nsf_file)
 end
 
-puts "Created continuous_tone.nsf (#{nsf_file.bytesize} bytes)"
-puts "This NSF plays continuous tones:"
-puts "  - Pulse 1: 440Hz (A4)"
-puts "  - Pulse 2: 523Hz (C5)"
-puts "Use this to test if the audio quality degrades over time"
+puts "Created #{filename}.nsf (#{nsf_file.bytesize} bytes)"
