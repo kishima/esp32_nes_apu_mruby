@@ -39,6 +39,8 @@ int _sample_count = -1;
 
 using namespace std;
 
+#define NTSC_SAMPLE 262
+
 void update_audio()
 {
     // 安全性チェック：エミュレータポインタの検証
@@ -50,12 +52,12 @@ void update_audio()
     // NSFプレイヤーのupdate()実行 - 内部でAPU処理も行う
     _emu->update();  // PLAYルーチンを実行
 
-    int16_t abuffer[313*2];
+    int16_t abuffer[(NTSC_SAMPLE+1)*2];
     int format = _emu->audio_format >> 8;
     _sample_count = _emu->frame_sample_count();
     
     // サンプル数の検証
-    if (_sample_count <= 0 || _sample_count > 313*2) {
+    if (_sample_count <= 0 || _sample_count > (NTSC_SAMPLE+1)*2) {
         printf("[AUDIO_ERROR] Invalid sample count: %d\n", _sample_count);
         return;
     }
@@ -107,7 +109,8 @@ void emu_task(void* arg)
     srand(esp_timer_get_time());
 
     //emu init
-    std::string rom_file = "/nsf/test.nsf";
+    std::string rom_file = "/nsf/continuous_tone.nsf";
+    //std::string rom_file = "/nsf/test.nsf";
     //std::string rom_file = "/nsf/minimal_test.nsf";
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
         printf("Failed to load ROM, suspending emu_task\n");

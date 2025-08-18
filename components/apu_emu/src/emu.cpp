@@ -294,6 +294,7 @@ int Emu::frame_sample_count()
 {
     int n = audio_frame_samples + audio_fraction;
     audio_fraction = n & 0xFFFF;
+    //printf("audio_frame_samples:%08X audio_fraction:%d n:%d\n",audio_frame_samples,audio_fraction,n >> 16);
     return n >> 16;
 }
 

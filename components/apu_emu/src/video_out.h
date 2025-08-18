@@ -812,13 +812,15 @@ void audio_write_16(const int16_t* s, int len, int channels)
 {
     int b;
     while (len--) {
-        if (_audio_w == (_audio_r + sizeof(_audio_buffer)))
+        if (_audio_w == (_audio_r + sizeof(_audio_buffer))){
             break;
+        }
         if (channels == 2) {
             b = (s[0] + s[1]) >> 9;
             s += 2;
-        } else
+        } else {
             b = *s++ >> 8;
+        }
         if (b < -32) b = -32;
         if (b > 31) b = 31;
         _audio_buffer[_audio_w++ & (sizeof(_audio_buffer)-1)] = b + 32;
