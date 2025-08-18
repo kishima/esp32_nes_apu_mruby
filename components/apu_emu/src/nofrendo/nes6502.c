@@ -34,7 +34,7 @@
 #define CPU_DEBUG       0    // CPU実行詳細ログ
 #define MEMORY_DEBUG    0    // メモリアクセスログ
 #define JSR_DEBUG       0    // JSR命令詳細ログ
-#define OPCODE_DEBUG    1    // オペコード実行ログ
+#define OPCODE_DEBUG    0    // オペコード実行ログ
 
 #define  ADD_CYCLES(x) \
 { \
@@ -923,7 +923,7 @@
 { \
    if (S >= 0xFE) { \
       /* スタックアンダーフロー検出: NSFルーチン終了 */ \
-      printf("CPU: RTS stack underflow at PC=$%04X, terminating execution\n", PC); \
+      /* printf("CPU: RTS stack underflow at PC=$%04X, terminating execution\n", PC); */ \
       remaining_cycles = -1; /* 強制的に負の値にして即座に終了 */ \
       ADD_CYCLES(6); \
       goto end_execute; /* 直接終了ラベルへジャンプ */ \
@@ -1385,7 +1385,7 @@ uint32 nes6502_getcycles(bool reset_flag)
 #define  MIN(a,b)    (((a) < (b)) ? (a) : (b))
 #define  OPCODE_BEGIN(xx)  op##xx:
 
-#define MAX_DEBUG_OPCODE 100
+#define MAX_DEBUG_OPCODE 30
 
 #define  OPCODE_END \
    if (remaining_cycles <= 0) \
@@ -1508,7 +1508,7 @@ int nes6502_execute(int timeslice_cycles)
    {
       static int first_fetch_count = 0;
       uint8 first_opcode = bank_readbyte(PC);
-      if (OPCODE_DEBUG && first_fetch_count < 5 && PC >= 0x8000 && PC < 0x8100) {
+      if (OPCODE_DEBUG && first_fetch_count < 50 && PC >= 0x8000 && PC < 0x8100) {
          printf("[FIRST_FETCH] PC=$%04X, opcode=$%02X, remaining_cycles=%d\n", PC, first_opcode, remaining_cycles);
          first_fetch_count++;
       }
