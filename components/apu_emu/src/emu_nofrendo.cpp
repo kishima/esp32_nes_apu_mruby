@@ -601,57 +601,44 @@ public:
 
     void nsf_execute_play_routine() {
         if (!_nsf_initialized) return;
-        static bool debug_print = false;
+        static bool debug_print = true;
         
         static uint32_t play_count = 0;
         play_count++;
         
-        // 新規CPUコンテキストを作成して、毎回クリーンな状態から開始
-        static nes6502_context clean_cpu_ctx;
+        // 現在のCPUコンテキストを取得して、PCのみ変更
+        nes6502_context* current_ctx = nes_getcontextptr()->cpu;
+        if (!current_ctx) return;
         
-        // 基本的なCPU設定
-        memset(&clean_cpu_ctx, 0, sizeof(nes6502_context));
-        clean_cpu_ctx.pc_reg = _nsf_header.play_addr;  // PLAY address
-        clean_cpu_ctx.s_reg = 0xFF;  // Empty stack
-        clean_cpu_ctx.a_reg = 0;     // A = 0
-        clean_cpu_ctx.x_reg = 0;     // X = 0
-        clean_cpu_ctx.y_reg = 0;     // Y = 0
-        clean_cpu_ctx.p_reg = 0x24;  // Flags: I=1 (interrupts disabled), unused bit = 1
+        // 現在の状態を取得
+        static nes6502_context play_ctx;
+        nes6502_getcontext(&play_ctx);
         
-        // メモリページを設定
+        // PLAYルーチンのためにPCとスタックのみ設定
+        play_ctx.pc_reg = _nsf_header.play_addr;  // PLAY address
+        play_ctx.s_reg = 0xFF;  // Empty stack for NSF termination detection
+        
+        // メモリページを確保（NSFデータ部分）
         if (_nofrendo_rom) {
             uint8_t* nsf_data = _nofrendo_rom + sizeof(NSFHeader);
-            // 既存のCPUコンテキストからメモリページ設定をコピー
-            nes6502_context* current_ctx = nes_getcontextptr()->cpu;
-            if (current_ctx) {
-                // メモリページをコピー（ただしNSFデータ部分は更新）
-                memcpy(clean_cpu_ctx.mem_page, current_ctx->mem_page, sizeof(clean_cpu_ctx.mem_page));
-                clean_cpu_ctx.mem_page[8] = nsf_data;  // $8000-$8FFF
-                
-                // その他の必要な設定をコピー
-                clean_cpu_ctx.int_pending = 0;
-                clean_cpu_ctx.jammed = false;
-            }
+            play_ctx.mem_page[8] = nsf_data;  // $8000-$8FFF
         }
         
         // デバッグ: 実行前の状態確認
         if (debug_print && play_count <= 200) {
             printf("NSF PLAY[%u]: Clean start - PC=$%04X, SP=$%02X\n", 
-                   play_count, clean_cpu_ctx.pc_reg, clean_cpu_ctx.s_reg);
+                   play_count, play_ctx.pc_reg, play_ctx.s_reg);
         }
         
-        // CPUの内部状態をリセット（重要: remaining_cyclesなどの静的変数をクリア）
-        nes6502_reset();
-        
-        // クリーンなコンテキストを設定（リセット後に設定）
-        nes6502_setcontext(&clean_cpu_ctx);
+        // 状態を設定（RAMやAPU状態は保持される）
+        nes6502_setcontext(&play_ctx);
         
         // setcontext後の確認（正しい方法で確認）
         if (debug_print && play_count <= 20) {
             static nes6502_context verify_ctx;
             nes6502_getcontext(&verify_ctx);  // 実際に設定されたコンテキストを取得
             printf("NSF PLAY[%u]: After setcontext - PC=$%04X (expected $%04X)\n", 
-                   play_count, verify_ctx.pc_reg, clean_cpu_ctx.pc_reg);
+                   play_count, verify_ctx.pc_reg, play_ctx.pc_reg);
         }
         
         // NSF PLAY実行

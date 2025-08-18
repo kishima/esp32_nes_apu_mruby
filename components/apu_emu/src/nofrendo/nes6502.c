@@ -923,7 +923,7 @@
 { \
    if (S >= 0xFE) { \
       /* スタックアンダーフロー検出: NSFルーチン終了 */ \
-      /* printf("CPU: RTS stack underflow at PC=$%04X, terminating execution\n", PC); */ \
+      printf("CPU: RTS stack underflow at PC=$%04X, terminating execution\n", PC); \
       remaining_cycles = -1; /* 強制的に負の値にして即座に終了 */ \
       ADD_CYCLES(6); \
       goto end_execute; /* 直接終了ラベルへジャンプ */ \
@@ -1259,7 +1259,7 @@ static uint8 mem_readbyte(uint32 address)
    /* check memory range handlers */
    else
    {
-      for (mr = cpu.read_handler; mr->min_range != 0xFFFFFFFF; mr++)
+      for (mr = cpu.read_handler; mr && mr->min_range != 0xFFFFFFFF; mr++)
       {
          if (address >= mr->min_range && address <= mr->max_range)
             return mr->read_func(address);
@@ -1284,7 +1284,7 @@ static void mem_writebyte(uint32 address, uint8 value)
    /* check memory range handlers */
    else
    {
-      for (mw = cpu.write_handler; mw->min_range != 0xFFFFFFFF; mw++)
+      for (mw = cpu.write_handler; mw && mw->min_range != 0xFFFFFFFF; mw++)
       {
          if (address >= mw->min_range && address <= mw->max_range)
          {

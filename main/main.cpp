@@ -107,8 +107,8 @@ void emu_task(void* arg)
     srand(esp_timer_get_time());
 
     //emu init
-    //std::string rom_file = "/nsf/test.nsf";
-    std::string rom_file = "/nsf/minimal_test.nsf";
+    std::string rom_file = "/nsf/test.nsf";
+    //std::string rom_file = "/nsf/minimal_test.nsf";
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
         printf("Failed to load ROM, suspending emu_task\n");
         vTaskSuspend(NULL);  // Suspend this task to prevent crashes
