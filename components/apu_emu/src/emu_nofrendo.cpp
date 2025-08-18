@@ -606,8 +606,14 @@ public:
         static uint32_t play_count = 0;
         play_count++;
         
+        // APUコンテキストの確認
+        nes_t* nes_ctx = nes_getcontextptr();
+        if (!nes_ctx || !nes_ctx->apu) {
+            return;
+        }
+        
         // 現在のCPUコンテキストを取得して、PCのみ変更
-        nes6502_context* current_ctx = nes_getcontextptr()->cpu;
+        nes6502_context* current_ctx = nes_ctx->cpu;
         if (!current_ctx) return;
         
         // 現在の状態を取得
@@ -854,19 +860,13 @@ public:
         
         printf("NSF: NES context available - CPU: %p, APU: %p\n", nes_ctx->cpu, nes_ctx->apu);
         
-        // APUコンテキストの詳細チェック
-        if (nes_ctx->apu) {
-            printf("NSF: APU process function: %p\n", nes_ctx->apu->process);
-            uintptr_t process_addr = (uintptr_t)nes_ctx->apu->process;
-            if (process_addr >= 0x40000000 && process_addr <= 0x50000000) {
-                printf("NSF: APU process function pointer looks valid\n");
-            } else {
-                printf("NSF: WARNING - APU process function pointer looks invalid: 0x%08X\n", 
-                       (uint32_t)process_addr);
-            }
-        } else {
-            printf("NSF: WARNING - APU context is NULL after initialization\n");
-        }
+        // 動的に作成されたマシンコンテキストを静的なnes構造体にコピー
+        nes_setcontext(nes_ctx);
+        
+        // 動的APU構造体の内容を同期し、プロセス関数ポインタを修正
+        nes_t* synced_ctx = nes_getcontextptr();
+        apu_getcontext(synced_ctx->apu);
+        synced_ctx->apu->process = apu_process;
         
         // Setup APU memory handlers
         printf("NSF: Setting up APU memory handlers...\n");
