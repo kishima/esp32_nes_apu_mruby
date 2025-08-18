@@ -116,7 +116,8 @@ void emu_task(void* arg)
     }
 
     // 60Hz timing constants
-    const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
+    //const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
+    const uint64_t target_frame_time_us = 16639;  // 60.0988Hz = 16.639ms
     uint64_t next_frame_time = esp_timer_get_time();
     uint32_t frame_count = 0;
     uint32_t total_processing_time = 0;
@@ -131,7 +132,15 @@ void emu_task(void* arg)
       // NSF audio processing
       update_audio();
       //printf("audio update done\n");
-      
+
+      uint32_t buffer_used = _audio_w - _audio_r;
+      uint32_t buffer_free = sizeof(_audio_buffer) - buffer_used;
+
+      // Audio buffer 警告
+      if (buffer_used < 100) printf("underflow %ld\n", buffer_used);
+      if (buffer_used > 900) printf("overflow %ld\n", buffer_used);
+      //printf("buf w:%ld r:%ld\n", _audio_w, _audio_r);
+
       uint64_t frame_end = esp_timer_get_time();
       uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);
       total_processing_time += processing_time_us;
@@ -142,7 +151,6 @@ void emu_task(void* arg)
       
       // Sleep until next frame
       int64_t sleep_time_us = next_frame_time - frame_end;
-      //printf("next_frame_time:%lld,processing_time_us:%ld, sleep_time_us=%lld\n",next_frame_time,processing_time_us,sleep_time_us);
       
       if (sleep_time_us > 1000) {
         // Sleep if we have more than 1ms left
