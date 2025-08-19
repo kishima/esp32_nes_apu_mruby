@@ -61,6 +61,8 @@ uint8_t cpu_read(uint16_t addr) {
     // APU and I/O
     else if (addr >= 0x4000 && addr < 0x4020) {
         if (addr == 0x4015) {
+            // Always show APU access regardless of debug mode
+            printf("*** APU ACCESS *** Read $%04X\n", addr);
             return apu_read(addr);
         }
         return 0;
@@ -90,6 +92,8 @@ void cpu_write(uint16_t addr, uint8_t value) {
     }
     // APU and I/O
     else if (addr >= 0x4000 && addr < 0x4020) {
+        // Always show APU access regardless of debug mode
+        printf("*** APU ACCESS *** Write $%04X = $%02X\n", addr, value);
         apu_write(addr, value);
     }
     // Cartridge space (usually ROM, but some mappers have RAM here)
@@ -115,6 +119,7 @@ void cpu_init(CPU6502 *cpu) {
     memset(cpu, 0, sizeof(CPU6502));
     cpu->sp = 0xFD;  // Stack pointer initial value
     cpu->p = FLAG_R | FLAG_I;  // Reserved flag always set, interrupts disabled
+    cpu->jammed = false;
     g_cpu = cpu;
     
     printf("CPU: Initialized\n");
@@ -127,6 +132,7 @@ void cpu_reset(CPU6502 *cpu) {
     cpu->a = 0;
     cpu->x = 0;
     cpu->y = 0;
+    cpu->jammed = false;
     
     // Read reset vector
     uint16_t reset_vector = cpu_read(0xFFFC) | (cpu_read(0xFFFD) << 8);
@@ -177,7 +183,7 @@ static void update_nz(CPU6502 *cpu, uint8_t value) {
 
 // Print CPU state for debugging
 void cpu_print_state(CPU6502 *cpu) {
-    printf("PC:%04X A:%02X X:%02X Y:%02X SP:%02X P:%02X [%c%c%c%c%c%c%c] CYC:%d\n",
+    printf("PC:%04X A:%02X X:%02X Y:%02X SP:%02X P:%02X [%c%c%c%c%c%c%c] CYC:%d",
            cpu->pc, cpu->a, cpu->x, cpu->y, cpu->sp, cpu->p,
            get_flag(cpu, FLAG_N) ? 'N' : '-',
            get_flag(cpu, FLAG_V) ? 'V' : '-',
@@ -187,6 +193,152 @@ void cpu_print_state(CPU6502 *cpu) {
            get_flag(cpu, FLAG_Z) ? 'Z' : '-',
            get_flag(cpu, FLAG_C) ? 'C' : '-',
            cpu->cycles);
+}
+
+// Get description for opcode and operands
+static void print_opcode_description(CPU6502 *cpu, uint8_t opcode, uint16_t original_pc) {
+    uint16_t addr;
+    uint8_t operand1, operand2;
+    
+    // Temporarily restore PC to read operands
+    uint16_t saved_pc = cpu->pc;
+    cpu->pc = original_pc + 1;
+    
+    printf(" - ");
+    
+    switch(opcode) {
+        // Memory operations
+        case 0xA9: case 0xA5: case 0xB5: case 0xAD: case 0xBD: case 0xB9: case 0xA1: case 0xB1:
+            printf("Load accumulator");
+            break;
+        case 0xA2: case 0xA6: case 0xB6: case 0xAE: case 0xBE:
+            printf("Load X register");
+            break;
+        case 0xA0: case 0xA4: case 0xB4: case 0xAC: case 0xBC:
+            printf("Load Y register");
+            break;
+        case 0x85: case 0x95: case 0x8D: case 0x9D: case 0x99: case 0x81: case 0x91:
+            printf("Store accumulator");
+            break;
+        case 0x86: case 0x96: case 0x8E:
+            printf("Store X register");
+            break;
+        case 0x84: case 0x94: case 0x8C:
+            printf("Store Y register");
+            break;
+            
+        // Arithmetic
+        case 0x69: case 0x65: case 0x75: case 0x6D: case 0x7D: case 0x79: case 0x61: case 0x71:
+            printf("Add with carry");
+            break;
+        case 0xE9: case 0xE5: case 0xF5: case 0xED: case 0xFD: case 0xF9: case 0xE1: case 0xF1:
+            printf("Subtract with carry");
+            break;
+        case 0x29: case 0x25: case 0x35: case 0x2D: case 0x3D: case 0x39: case 0x21: case 0x31:
+            printf("Logical AND");
+            break;
+        case 0x09: case 0x05: case 0x15: case 0x0D: case 0x1D: case 0x19: case 0x01: case 0x11:
+            printf("Logical OR");
+            break;
+        case 0x49: case 0x45: case 0x55: case 0x4D: case 0x5D: case 0x59: case 0x41: case 0x51:
+            printf("Exclusive OR");
+            break;
+            
+        // Stack operations
+        case 0x48: printf("Push accumulator to stack"); break;
+        case 0x68: printf("Pull accumulator from stack"); break;
+        case 0x08: printf("Push processor status to stack"); break;
+        case 0x28: printf("Pull processor status from stack"); break;
+        
+        // Jumps and calls
+        case 0x4C: case 0x6C:
+            operand1 = cpu_read(cpu->pc++);
+            operand2 = cpu_read(cpu->pc++);
+            addr = operand1 | (operand2 << 8);
+            if (opcode == 0x6C) {
+                printf("Jump indirect to $%04X", addr);
+            } else {
+                printf("Jump to $%04X", addr);
+            }
+            break;
+        case 0x20:
+            operand1 = cpu_read(cpu->pc++);
+            operand2 = cpu_read(cpu->pc++);
+            addr = operand1 | (operand2 << 8);
+            printf("Call subroutine at $%04X", addr);
+            break;
+        case 0x60: printf("Return from subroutine"); break;
+        case 0x40: printf("Return from interrupt"); break;
+        
+        // Transfers
+        case 0xAA: printf("Transfer A to X"); break;
+        case 0x8A: printf("Transfer X to A"); break;
+        case 0xA8: printf("Transfer A to Y"); break;
+        case 0x98: printf("Transfer Y to A"); break;
+        case 0x9A: printf("Transfer X to stack pointer"); break;
+        case 0xBA: printf("Transfer stack pointer to X"); break;
+        
+        // Increments/Decrements
+        case 0xE8: printf("Increment X"); break;
+        case 0xC8: printf("Increment Y"); break;
+        case 0xCA: printf("Decrement X"); break;
+        case 0x88: printf("Decrement Y"); break;
+        case 0xE6: case 0xF6: case 0xEE: case 0xFE: printf("Increment memory"); break;
+        case 0xC6: case 0xD6: case 0xCE: case 0xDE: printf("Decrement memory"); break;
+        
+        // Branches
+        case 0x10: printf("Branch if plus"); break;
+        case 0x30: printf("Branch if minus"); break;
+        case 0x50: printf("Branch if overflow clear"); break;
+        case 0x70: printf("Branch if overflow set"); break;
+        case 0x90: printf("Branch if carry clear"); break;
+        case 0xB0: printf("Branch if carry set"); break;
+        case 0xD0: printf("Branch if not equal"); break;
+        case 0xF0: printf("Branch if equal"); break;
+        
+        // Flag operations
+        case 0x18: printf("Clear carry flag"); break;
+        case 0x38: printf("Set carry flag"); break;
+        case 0x58: printf("Clear interrupt disable"); break;
+        case 0x78: printf("Set interrupt disable"); break;
+        case 0xB8: printf("Clear overflow flag"); break;
+        case 0xD8: printf("Clear decimal mode"); break;
+        case 0xF8: printf("Set decimal mode"); break;
+        
+        // Comparisons
+        case 0xC9: case 0xC5: case 0xD5: case 0xCD: case 0xDD: case 0xD9: case 0xC1: case 0xD1:
+            printf("Compare with accumulator");
+            break;
+        case 0xE0: case 0xE4: case 0xEC:
+            printf("Compare with X register");
+            break;
+        case 0xC0: case 0xC4: case 0xCC:
+            printf("Compare with Y register");
+            break;
+        
+        // Shifts/Rotates
+        case 0x0A: case 0x06: case 0x16: case 0x0E: case 0x1E: printf("Arithmetic shift left"); break;
+        case 0x4A: case 0x46: case 0x56: case 0x4E: case 0x5E: printf("Logical shift right"); break;
+        case 0x2A: case 0x26: case 0x36: case 0x2E: case 0x3E: printf("Rotate left"); break;
+        case 0x6A: case 0x66: case 0x76: case 0x6E: case 0x7E: printf("Rotate right"); break;
+        
+        // Special
+        case 0x00: printf("Break (software interrupt)"); break;
+        case 0xEA: printf("No operation"); break;
+        case 0x24: case 0x2C: printf("Bit test"); break;
+        
+        default:
+            if ((opcode & 0x0F) == 0x02 || (opcode & 0x0F) == 0x12) {
+                printf("Illegal instruction - CPU jam");
+            } else {
+                printf("Illegal/undocumented instruction");
+            }
+            break;
+    }
+    
+    // Restore PC
+    cpu->pc = saved_pc;
+    printf("\n");
 }
 
 // Helper macros for addressing modes
@@ -300,9 +452,12 @@ void cpu_step(CPU6502 *cpu) {
     uint16_t addr;
     uint8_t value;
     
+    uint16_t original_pc = cpu->pc;
+    
     if (cpu->debug_mode) {
         printf("$%04X: %02X (%s) ", cpu->pc, opcode, opcode_names[opcode]);
         cpu_print_state(cpu);
+        print_opcode_description(cpu, opcode, original_pc);
     }
     
     cpu->pc++;
@@ -324,6 +479,8 @@ void cpu_step(CPU6502 *cpu) {
         case 0x02: case 0x12: case 0x22: case 0x32: case 0x42: case 0x52: case 0x62: case 0x72:
         case 0x92: case 0xB2: case 0xD2: case 0xF2: // JAM (illegal)
             printf("CPU jammed at $%04X\n", cpu->pc - 1);
+            cpu->pc--; // Stay at the same instruction
+            cpu->jammed = true;
             cpu->cycles += 2;
             break;
         case 0x03: // SLO ($nn,X) (illegal)

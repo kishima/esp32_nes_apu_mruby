@@ -62,6 +62,12 @@ void run_init(NSFPlayer *player, uint8_t song_num) {
         uint16_t old_pc = cpu.pc;
         cpu_step(&cpu);
         
+        // Check if CPU is jammed
+        if (cpu.jammed) {
+            printf("INIT stopped (CPU jammed at $%04X)\n", old_pc);
+            break;
+        }
+        
         // Check if we hit an RTS (return from INIT)
         if (cpu_read(old_pc) == 0x60) {  // RTS opcode
             printf("INIT completed (RTS at $%04X)\n", old_pc);
@@ -76,33 +82,77 @@ void run_init(NSFPlayer *player, uint8_t song_num) {
     }
     
     printf("INIT finished after %d cycles\n", cpu.cycles - start_cycles);
+    
 }
 
 // Run PLAY routine for NSF
 void run_play(NSFPlayer *player) {
+    // Save current CPU state
+    uint16_t saved_pc = cpu.pc;
+    uint8_t saved_sp = cpu.sp;
+    
+    // Set up JSR to PLAY address
+    // Push return address to stack (dummy address)
+    uint16_t return_addr = 0xFFFF;  // Dummy return address
+    cpu_write(0x100 + cpu.sp, (return_addr >> 8) & 0xFF);  // High byte
+    cpu.sp--;
+    cpu_write(0x100 + cpu.sp, return_addr & 0xFF);         // Low byte
+    cpu.sp--;
+    
     // Jump to PLAY address
     cpu.pc = player->header.play_addr;
     
-    // Run PLAY routine (one frame worth of cycles)
-    // NTSC: ~29780 cycles per frame (1789773 Hz / 60 fps)
-    uint32_t cycles_per_frame = 29780;
+    // Run PLAY routine for a limited number of cycles
+    // NTSC frame = ~29780 cycles, use a smaller portion for PLAY routine
+    uint32_t max_cycles = 5000;  // Reasonable limit for PLAY routine per frame
     uint32_t start_cycles = cpu.cycles;
+    bool completed_normally = false;
     
-    while (cpu.cycles - start_cycles < cycles_per_frame) {
+    while (cpu.cycles - start_cycles < max_cycles) {
         uint16_t old_pc = cpu.pc;
+        uint8_t opcode = cpu_read(cpu.pc);
+        
+        // Execute the instruction
         cpu_step(&cpu);
         
-        // Check if we hit an RTS or RTI
-        uint8_t opcode = cpu_read(old_pc);
-        if (opcode == 0x60 || opcode == 0x40) {  // RTS or RTI
+        // Check if CPU is jammed
+        if (cpu.jammed) {
+            if (cpu.debug_mode) {
+                printf("PLAY routine stopped (CPU jammed at $%04X)\n", old_pc);
+            }
             break;
         }
         
-        // Check for infinite loop
+        // Check if we executed an RTS and returned to dummy address
+        if (opcode == 0x60) {  // RTS
+            // Only check for our specific dummy return address (top-level RTS)
+            if (cpu.pc == return_addr) {
+                if (cpu.debug_mode) {
+                    printf("PLAY routine completed normally after %d cycles\n", 
+                           cpu.cycles - start_cycles);
+                }
+                completed_normally = true;
+                break;
+            }
+            // Ignore other RTS instructions (from subroutines within PLAY)
+        }
+        
+        // Check for infinite loop (PC didn't change)
         if (cpu.pc == old_pc) {
+            if (cpu.debug_mode) {
+                printf("PLAY routine infinite loop detected at $%04X\n", old_pc);
+            }
             break;
         }
     }
+    
+    if (!completed_normally && cpu.debug_mode) {
+        printf("PLAY routine timed out after %d cycles\n", cpu.cycles - start_cycles);
+    }
+    
+    // Restore CPU state for next frame
+    cpu.pc = saved_pc;
+    cpu.sp = saved_sp;
 }
 
 int main(int argc, char *argv[]) {
@@ -145,11 +195,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
+    // Enable debug mode for INIT and first few frames
+    cpu.debug_mode = true;
+    
     // Run INIT routine
     run_init(&nsf_player, song_num);
-    
-    // Enable debug mode for first few frames
-    cpu.debug_mode = true;
     
     // Main playback loop
     printf("\nStarting playback... Press Ctrl+C to stop\n");
@@ -157,22 +207,30 @@ int main(int argc, char *argv[]) {
     
     int frame_count = 0;
     nsf_player.is_playing = true;
-    
-    while (running && frame_count < 10) {  // Run for 10 frames as a test
+
+    cpu.debug_mode = true;
+
+    while (running && frame_count < 100000) {  // Run for 100 frames as a test
         printf("\n--- Frame %d ---\n", frame_count);
         
         // Run PLAY routine
         run_play(&nsf_player);
+        
+        // Check if CPU is jammed
+        if (cpu.jammed) {
+            printf("\nCPU jammed, stopping playback\n");
+            break;
+        }
         
         // Simulate frame timing (60 fps = ~16.67ms per frame)
         usleep(16667);
         
         frame_count++;
         
-        // Disable debug after first 3 frames
-        if (frame_count > 3) {
-            cpu.debug_mode = false;
-        }
+        // Disable debug after first 10 frames to reduce output
+        // if (frame_count > 10) {
+        //     cpu.debug_mode = false;
+        // }
     }
     
     printf("\nPlayback stopped after %d frames\n", frame_count);

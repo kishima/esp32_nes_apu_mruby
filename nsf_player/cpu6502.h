@@ -32,6 +32,9 @@ typedef struct {
     // Timing
     uint32_t cycles;        // Total CPU cycles
     
+    // CPU state
+    bool jammed;            // CPU is jammed (illegal instruction)
+    
     // Debug
     bool debug_mode;        // Enable debug output
 } CPU6502;
