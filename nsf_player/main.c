@@ -45,7 +45,8 @@ void run_init(NSFPlayer *player, uint8_t song_num) {
     cpu.p = FLAG_R | FLAG_I;  // Reserved flag always set, interrupts disabled
     
     // Set up for INIT call
-    cpu.a = song_num - 1;  // Song number (0-based)
+    // For DQ.nsf, need A >= 0x80 to trigger proper initialization
+    cpu.a = 0x80 + (song_num - 1);  // Song number with high bit set
     cpu.x = 0;  // PAL/NTSC flag (0 = NTSC)
     cpu.y = 0;
     
@@ -92,11 +93,12 @@ void run_play(NSFPlayer *player) {
     uint8_t saved_sp = cpu.sp;
     
     // Set up JSR to PLAY address
-    // Push return address to stack (dummy address)
+    // Push return address - 1 to stack (RTS will add 1)
     uint16_t return_addr = 0xFFFF;  // Dummy return address
-    cpu_write(0x100 + cpu.sp, (return_addr >> 8) & 0xFF);  // High byte
+    uint16_t push_addr = return_addr - 1;  // RTS expects address - 1
+    cpu_write(0x100 + cpu.sp, (push_addr >> 8) & 0xFF);  // High byte
     cpu.sp--;
-    cpu_write(0x100 + cpu.sp, return_addr & 0xFF);         // Low byte
+    cpu_write(0x100 + cpu.sp, push_addr & 0xFF);         // Low byte
     cpu.sp--;
     
     // Jump to PLAY address
@@ -210,8 +212,10 @@ int main(int argc, char *argv[]) {
 
     cpu.debug_mode = true;
 
-    while (running && frame_count < 100000) {  // Run for 100 frames as a test
-        printf("\n--- Frame %d ---\n", frame_count);
+    while (running && frame_count < 600) {  // Run for 10 seconds (60fps * 10)
+        if (frame_count % 60 == 0) {
+            printf("\n--- Second %d ---\n", frame_count / 60);
+        }
         
         // Run PLAY routine
         run_play(&nsf_player);
@@ -227,10 +231,10 @@ int main(int argc, char *argv[]) {
         
         frame_count++;
         
-        // Disable debug after first 10 frames to reduce output
-        // if (frame_count > 10) {
-        //     cpu.debug_mode = false;
-        // }
+        // Disable debug after first 60 frames (1 second) to reduce output
+        if (frame_count > 60) {
+            cpu.debug_mode = false;
+        }
     }
     
     printf("\nPlayback stopped after %d frames\n", frame_count);
