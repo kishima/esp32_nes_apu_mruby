@@ -189,12 +189,116 @@ void cpu_print_state(CPU6502 *cpu) {
            cpu->cycles);
 }
 
+// Helper macros for addressing modes
+#define IMMEDIATE() (cpu_read(cpu->pc++))
+#define ZERO_PAGE() (cpu_read(cpu->pc++))
+#define ZERO_PAGE_X() ((cpu_read(cpu->pc++) + cpu->x) & 0xFF)
+#define ZERO_PAGE_Y() ((cpu_read(cpu->pc++) + cpu->y) & 0xFF)
+#define ABSOLUTE() (cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8))
+#define ABSOLUTE_X() (ABSOLUTE() + cpu->x)
+#define ABSOLUTE_Y() (ABSOLUTE() + cpu->y)
+#define INDIRECT_X() ({ uint8_t base = (cpu_read(cpu->pc++) + cpu->x) & 0xFF; \
+                       cpu_read(base) | (cpu_read((base + 1) & 0xFF) << 8); })
+#define INDIRECT_Y() ({ uint8_t base = cpu_read(cpu->pc++); \
+                       (cpu_read(base) | (cpu_read((base + 1) & 0xFF) << 8)) + cpu->y; })
+
+// ALU operations
+static void adc(CPU6502 *cpu, uint8_t value) {
+    uint16_t result = cpu->a + value + (get_flag(cpu, FLAG_C) ? 1 : 0);
+    set_flag(cpu, FLAG_C, result > 0xFF);
+    set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (value ^ result) & 0x80) != 0);
+    cpu->a = result & 0xFF;
+    update_nz(cpu, cpu->a);
+}
+
+static void sbc(CPU6502 *cpu, uint8_t value) {
+    adc(cpu, value ^ 0xFF);
+}
+
+static void cmp(CPU6502 *cpu, uint8_t reg, uint8_t value) {
+    uint16_t result = reg - value;
+    set_flag(cpu, FLAG_C, reg >= value);
+    update_nz(cpu, result & 0xFF);
+}
+
+static void and_op(CPU6502 *cpu, uint8_t value) {
+    cpu->a &= value;
+    update_nz(cpu, cpu->a);
+}
+
+static void ora(CPU6502 *cpu, uint8_t value) {
+    cpu->a |= value;
+    update_nz(cpu, cpu->a);
+}
+
+static void eor(CPU6502 *cpu, uint8_t value) {
+    cpu->a ^= value;
+    update_nz(cpu, cpu->a);
+}
+
+static void bit(CPU6502 *cpu, uint8_t value) {
+    set_flag(cpu, FLAG_Z, (cpu->a & value) == 0);
+    set_flag(cpu, FLAG_V, (value & 0x40) != 0);
+    set_flag(cpu, FLAG_N, (value & 0x80) != 0);
+}
+
+static uint8_t asl(CPU6502 *cpu, uint8_t value) {
+    set_flag(cpu, FLAG_C, (value & 0x80) != 0);
+    value <<= 1;
+    update_nz(cpu, value);
+    return value;
+}
+
+static uint8_t lsr(CPU6502 *cpu, uint8_t value) {
+    set_flag(cpu, FLAG_C, (value & 0x01) != 0);
+    value >>= 1;
+    update_nz(cpu, value);
+    return value;
+}
+
+static uint8_t rol(CPU6502 *cpu, uint8_t value) {
+    bool old_carry = get_flag(cpu, FLAG_C);
+    set_flag(cpu, FLAG_C, (value & 0x80) != 0);
+    value = (value << 1) | (old_carry ? 1 : 0);
+    update_nz(cpu, value);
+    return value;
+}
+
+static uint8_t ror(CPU6502 *cpu, uint8_t value) {
+    bool old_carry = get_flag(cpu, FLAG_C);
+    set_flag(cpu, FLAG_C, (value & 0x01) != 0);
+    value = (value >> 1) | (old_carry ? 0x80 : 0);
+    update_nz(cpu, value);
+    return value;
+}
+
+static uint8_t inc(CPU6502 *cpu, uint8_t value) {
+    value++;
+    update_nz(cpu, value);
+    return value;
+}
+
+static uint8_t dec(CPU6502 *cpu, uint8_t value) {
+    value--;
+    update_nz(cpu, value);
+    return value;
+}
+
+// Branch helper
+static void branch(CPU6502 *cpu, bool condition) {
+    int8_t offset = (int8_t)IMMEDIATE();
+    if (condition) {
+        uint16_t old_pc = cpu->pc;
+        cpu->pc += offset;
+        cpu->cycles += ((old_pc & 0xFF00) != (cpu->pc & 0xFF00)) ? 2 : 1;
+    }
+}
+
 // Execute one instruction
 void cpu_step(CPU6502 *cpu) {
     uint8_t opcode = cpu_read(cpu->pc);
     uint16_t addr;
     uint8_t value;
-    int8_t offset;
     
     if (cpu->debug_mode) {
         printf("$%04X: %02X (%s) ", cpu->pc, opcode, opcode_names[opcode]);
@@ -203,261 +307,1144 @@ void cpu_step(CPU6502 *cpu) {
     
     cpu->pc++;
     
-    // Simplified opcode implementation (only essential opcodes for NSF)
+    // Complete 6502 opcode implementation (all 256 opcodes)
     switch(opcode) {
-        // LDA immediate
-        case 0xA9:
-            cpu->a = cpu_read(cpu->pc++);
-            update_nz(cpu, cpu->a);
-            cpu->cycles += 2;
-            break;
-            
-        // LDX immediate
-        case 0xA2:
-            cpu->x = cpu_read(cpu->pc++);
-            update_nz(cpu, cpu->x);
-            cpu->cycles += 2;
-            break;
-            
-        // LDY immediate
-        case 0xA0:
-            cpu->y = cpu_read(cpu->pc++);
-            update_nz(cpu, cpu->y);
-            cpu->cycles += 2;
-            break;
-            
-        // STA absolute
-        case 0x8D:
-            addr = cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8);
-            cpu_write(addr, cpu->a);
-            cpu->cycles += 4;
-            break;
-            
-        // STX absolute
-        case 0x8E:
-            addr = cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8);
-            cpu_write(addr, cpu->x);
-            cpu->cycles += 4;
-            break;
-            
-        // STY absolute
-        case 0x8C:
-            addr = cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8);
-            cpu_write(addr, cpu->y);
-            cpu->cycles += 4;
-            break;
-            
-        // JMP absolute
-        case 0x4C:
-            cpu->pc = cpu_read(cpu->pc) | (cpu_read(cpu->pc + 1) << 8);
-            cpu->cycles += 3;
-            break;
-            
-        // JSR absolute
-        case 0x20:
-            addr = cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8);
-            push16(cpu, cpu->pc - 1);
-            cpu->pc = addr;
-            cpu->cycles += 6;
-            break;
-            
-        // RTS
-        case 0x60:
-            cpu->pc = pull16(cpu) + 1;
-            cpu->cycles += 6;
-            break;
-            
-        // RTI
-        case 0x40:
-            cpu->p = pull8(cpu);
-            cpu->pc = pull16(cpu);
-            cpu->cycles += 6;
-            break;
-            
-        // NOP
-        case 0xEA:
-            cpu->cycles += 2;
-            break;
-            
-        // SEI
-        case 0x78:
-            set_flag(cpu, FLAG_I, true);
-            cpu->cycles += 2;
-            break;
-            
-        // CLD
-        case 0xD8:
-            set_flag(cpu, FLAG_D, false);
-            cpu->cycles += 2;
-            break;
-            
-        // TXS
-        case 0x9A:
-            cpu->sp = cpu->x;
-            cpu->cycles += 2;
-            break;
-            
-        // BNE
-        case 0xD0:
-            offset = (int8_t)cpu_read(cpu->pc++);
-            if (!get_flag(cpu, FLAG_Z)) {
-                cpu->pc += offset;
-                cpu->cycles += 3;
-            } else {
-                cpu->cycles += 2;
-            }
-            break;
-            
-        // BEQ
-        case 0xF0:
-            offset = (int8_t)cpu_read(cpu->pc++);
-            if (get_flag(cpu, FLAG_Z)) {
-                cpu->pc += offset;
-                cpu->cycles += 3;
-            } else {
-                cpu->cycles += 2;
-            }
-            break;
-            
-        // BPL
-        case 0x10:
-            offset = (int8_t)cpu_read(cpu->pc++);
-            if (!get_flag(cpu, FLAG_N)) {
-                cpu->pc += offset;
-                cpu->cycles += 3;
-            } else {
-                cpu->cycles += 2;
-            }
-            break;
-            
-        // BMI
-        case 0x30:
-            offset = (int8_t)cpu_read(cpu->pc++);
-            if (get_flag(cpu, FLAG_N)) {
-                cpu->pc += offset;
-                cpu->cycles += 3;
-            } else {
-                cpu->cycles += 2;
-            }
-            break;
-            
-        // INX
-        case 0xE8:
-            cpu->x++;
-            update_nz(cpu, cpu->x);
-            cpu->cycles += 2;
-            break;
-            
-        // DEX
-        case 0xCA:
-            cpu->x--;
-            update_nz(cpu, cpu->x);
-            cpu->cycles += 2;
-            break;
-            
-        // INY
-        case 0xC8:
-            cpu->y++;
-            update_nz(cpu, cpu->y);
-            cpu->cycles += 2;
-            break;
-            
-        // DEY
-        case 0x88:
-            cpu->y--;
-            update_nz(cpu, cpu->y);
-            cpu->cycles += 2;
-            break;
-            
-        // BRK
-        case 0x00:
+        // 0x00-0x0F
+        case 0x00: // BRK
             push16(cpu, cpu->pc);
             push8(cpu, cpu->p | FLAG_B);
             set_flag(cpu, FLAG_I, true);
             cpu->pc = cpu_read(0xFFFE) | (cpu_read(0xFFFF) << 8);
             cpu->cycles += 7;
             break;
-            
-        // CMP immediate
-        case 0xC9:
-            value = cpu_read(cpu->pc++);
-            set_flag(cpu, FLAG_C, cpu->a >= value);
-            update_nz(cpu, cpu->a - value);
+        case 0x01: // ORA ($nn,X)
+            ora(cpu, cpu_read(INDIRECT_X()));
+            cpu->cycles += 6;
+            break;
+        case 0x02: case 0x12: case 0x22: case 0x32: case 0x42: case 0x52: case 0x62: case 0x72:
+        case 0x92: case 0xB2: case 0xD2: case 0xF2: // JAM (illegal)
+            printf("CPU jammed at $%04X\n", cpu->pc - 1);
             cpu->cycles += 2;
             break;
-            
-        // LDA absolute
-        case 0xAD:
-            addr = cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8);
-            cpu->a = cpu_read(addr);
-            update_nz(cpu, cpu->a);
+        case 0x03: // SLO ($nn,X) (illegal)
+            addr = INDIRECT_X();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x04: case 0x44: case 0x64: // NOP $nn (illegal)
+            cpu->pc++;
+            cpu->cycles += 3;
+            break;
+        case 0x05: // ORA $nn
+            ora(cpu, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0x06: // ASL $nn
+            addr = ZERO_PAGE();
+            cpu_write(addr, asl(cpu, cpu_read(addr)));
+            cpu->cycles += 5;
+            break;
+        case 0x07: // SLO $nn (illegal)
+            addr = ZERO_PAGE();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 5;
+            break;
+        case 0x08: // PHP
+            push8(cpu, cpu->p | FLAG_B);
+            cpu->cycles += 3;
+            break;
+        case 0x09: // ORA #$nn
+            ora(cpu, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0x0A: // ASL A
+            cpu->a = asl(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x0B: // ANC #$nn (illegal)
+            and_op(cpu, IMMEDIATE());
+            set_flag(cpu, FLAG_C, get_flag(cpu, FLAG_N));
+            cpu->cycles += 2;
+            break;
+        case 0x0C: // NOP $nnnn (illegal)
+            cpu->pc += 2;
             cpu->cycles += 4;
             break;
-            
-        // STA zero page
-        case 0x85:
-            cpu_write(cpu_read(cpu->pc++), cpu->a);
-            cpu->cycles += 3;
+        case 0x0D: // ORA $nnnn
+            ora(cpu, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0x0E: // ASL $nnnn
+            addr = ABSOLUTE();
+            cpu_write(addr, asl(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x0F: // SLO $nnnn (illegal)
+            addr = ABSOLUTE();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 6;
             break;
             
-        // LDA zero page
-        case 0xA5:
-            cpu->a = cpu_read(cpu_read(cpu->pc++));
-            update_nz(cpu, cpu->a);
-            cpu->cycles += 3;
+        // 0x10-0x1F
+        case 0x10: // BPL
+            branch(cpu, !get_flag(cpu, FLAG_N));
+            cpu->cycles += 2;
+            break;
+        case 0x11: // ORA ($nn),Y
+            ora(cpu, cpu_read(INDIRECT_Y()));
+            cpu->cycles += 5;
+            break;
+        case 0x13: // SLO ($nn),Y (illegal)
+            addr = INDIRECT_Y();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x14: case 0x34: case 0x54: case 0x74: case 0xD4: case 0xF4: // NOP $nn,X (illegal)
+            cpu->pc++;
+            cpu->cycles += 4;
+            break;
+        case 0x15: // ORA $nn,X
+            ora(cpu, cpu_read(ZERO_PAGE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x16: // ASL $nn,X
+            addr = ZERO_PAGE_X();
+            cpu_write(addr, asl(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x17: // SLO $nn,X (illegal)
+            addr = ZERO_PAGE_X();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 6;
+            break;
+        case 0x18: // CLC
+            set_flag(cpu, FLAG_C, false);
+            cpu->cycles += 2;
+            break;
+        case 0x19: // ORA $nnnn,Y
+            ora(cpu, cpu_read(ABSOLUTE_Y()));
+            cpu->cycles += 4;
+            break;
+        case 0x1A: case 0x3A: case 0x5A: case 0x7A: case 0xDA: case 0xFA: // NOP (illegal)
+            cpu->cycles += 2;
+            break;
+        case 0x1B: // SLO $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 7;
+            break;
+        case 0x1C: case 0x3C: case 0x5C: case 0x7C: case 0xDC: case 0xFC: // NOP $nnnn,X (illegal)
+            cpu->pc += 2;
+            cpu->cycles += 4;
+            break;
+        case 0x1D: // ORA $nnnn,X
+            ora(cpu, cpu_read(ABSOLUTE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x1E: // ASL $nnnn,X
+            addr = ABSOLUTE_X();
+            cpu_write(addr, asl(cpu, cpu_read(addr)));
+            cpu->cycles += 7;
+            break;
+        case 0x1F: // SLO $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            value = asl(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            ora(cpu, value);
+            cpu->cycles += 7;
             break;
             
-        // PHA
-        case 0x48:
+        // 0x20-0x2F
+        case 0x20: // JSR $nnnn
+            addr = ABSOLUTE();
+            push16(cpu, cpu->pc - 1);
+            cpu->pc = addr;
+            cpu->cycles += 6;
+            break;
+        case 0x21: // AND ($nn,X)
+            and_op(cpu, cpu_read(INDIRECT_X()));
+            cpu->cycles += 6;
+            break;
+        case 0x23: // RLA ($nn,X) (illegal)
+            addr = INDIRECT_X();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x24: // BIT $nn
+            bit(cpu, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0x25: // AND $nn
+            and_op(cpu, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0x26: // ROL $nn
+            addr = ZERO_PAGE();
+            cpu_write(addr, rol(cpu, cpu_read(addr)));
+            cpu->cycles += 5;
+            break;
+        case 0x27: // RLA $nn (illegal)
+            addr = ZERO_PAGE();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 5;
+            break;
+        case 0x28: // PLP
+            cpu->p = pull8(cpu);
+            cpu->cycles += 4;
+            break;
+        case 0x29: // AND #$nn
+            and_op(cpu, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0x2A: // ROL A
+            cpu->a = rol(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x2B: // ANC #$nn (illegal)
+            and_op(cpu, IMMEDIATE());
+            set_flag(cpu, FLAG_C, get_flag(cpu, FLAG_N));
+            cpu->cycles += 2;
+            break;
+        case 0x2C: // BIT $nnnn
+            bit(cpu, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0x2D: // AND $nnnn
+            and_op(cpu, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0x2E: // ROL $nnnn
+            addr = ABSOLUTE();
+            cpu_write(addr, rol(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x2F: // RLA $nnnn (illegal)
+            addr = ABSOLUTE();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 6;
+            break;
+            
+        // 0x30-0x3F
+        case 0x30: // BMI
+            branch(cpu, get_flag(cpu, FLAG_N));
+            cpu->cycles += 2;
+            break;
+        case 0x31: // AND ($nn),Y
+            and_op(cpu, cpu_read(INDIRECT_Y()));
+            cpu->cycles += 5;
+            break;
+        case 0x33: // RLA ($nn),Y (illegal)
+            addr = INDIRECT_Y();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x35: // AND $nn,X
+            and_op(cpu, cpu_read(ZERO_PAGE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x36: // ROL $nn,X
+            addr = ZERO_PAGE_X();
+            cpu_write(addr, rol(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x37: // RLA $nn,X (illegal)
+            addr = ZERO_PAGE_X();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 6;
+            break;
+        case 0x38: // SEC
+            set_flag(cpu, FLAG_C, true);
+            cpu->cycles += 2;
+            break;
+        case 0x39: // AND $nnnn,Y
+            and_op(cpu, cpu_read(ABSOLUTE_Y()));
+            cpu->cycles += 4;
+            break;
+        case 0x3B: // RLA $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 7;
+            break;
+        case 0x3D: // AND $nnnn,X
+            and_op(cpu, cpu_read(ABSOLUTE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x3E: // ROL $nnnn,X
+            addr = ABSOLUTE_X();
+            cpu_write(addr, rol(cpu, cpu_read(addr)));
+            cpu->cycles += 7;
+            break;
+        case 0x3F: // RLA $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            value = rol(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            and_op(cpu, value);
+            cpu->cycles += 7;
+            break;
+            
+        // 0x40-0x4F
+        case 0x40: // RTI
+            cpu->p = pull8(cpu) & ~FLAG_B;
+            cpu->pc = pull16(cpu);
+            cpu->cycles += 6;
+            break;
+        case 0x41: // EOR ($nn,X)
+            eor(cpu, cpu_read(INDIRECT_X()));
+            cpu->cycles += 6;
+            break;
+        case 0x43: // SRE ($nn,X) (illegal)
+            addr = INDIRECT_X();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x45: // EOR $nn
+            eor(cpu, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0x46: // LSR $nn
+            addr = ZERO_PAGE();
+            cpu_write(addr, lsr(cpu, cpu_read(addr)));
+            cpu->cycles += 5;
+            break;
+        case 0x47: // SRE $nn (illegal)
+            addr = ZERO_PAGE();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 5;
+            break;
+        case 0x48: // PHA
             push8(cpu, cpu->a);
             cpu->cycles += 3;
             break;
+        case 0x49: // EOR #$nn
+            eor(cpu, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0x4A: // LSR A
+            cpu->a = lsr(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x4B: // ALR #$nn (illegal)
+            and_op(cpu, IMMEDIATE());
+            cpu->a = lsr(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x4C: // JMP $nnnn
+            cpu->pc = ABSOLUTE();
+            cpu->cycles += 3;
+            break;
+        case 0x4D: // EOR $nnnn
+            eor(cpu, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0x4E: // LSR $nnnn
+            addr = ABSOLUTE();
+            cpu_write(addr, lsr(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x4F: // SRE $nnnn (illegal)
+            addr = ABSOLUTE();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 6;
+            break;
             
-        // PLA
-        case 0x68:
+        // 0x50-0x5F
+        case 0x50: // BVC
+            branch(cpu, !get_flag(cpu, FLAG_V));
+            cpu->cycles += 2;
+            break;
+        case 0x51: // EOR ($nn),Y
+            eor(cpu, cpu_read(INDIRECT_Y()));
+            cpu->cycles += 5;
+            break;
+        case 0x53: // SRE ($nn),Y (illegal)
+            addr = INDIRECT_Y();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x55: // EOR $nn,X
+            eor(cpu, cpu_read(ZERO_PAGE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x56: // LSR $nn,X
+            addr = ZERO_PAGE_X();
+            cpu_write(addr, lsr(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x57: // SRE $nn,X (illegal)
+            addr = ZERO_PAGE_X();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 6;
+            break;
+        case 0x58: // CLI
+            set_flag(cpu, FLAG_I, false);
+            cpu->cycles += 2;
+            break;
+        case 0x59: // EOR $nnnn,Y
+            eor(cpu, cpu_read(ABSOLUTE_Y()));
+            cpu->cycles += 4;
+            break;
+        case 0x5B: // SRE $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 7;
+            break;
+        case 0x5D: // EOR $nnnn,X
+            eor(cpu, cpu_read(ABSOLUTE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x5E: // LSR $nnnn,X
+            addr = ABSOLUTE_X();
+            cpu_write(addr, lsr(cpu, cpu_read(addr)));
+            cpu->cycles += 7;
+            break;
+        case 0x5F: // SRE $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            value = lsr(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            eor(cpu, value);
+            cpu->cycles += 7;
+            break;
+            
+        // 0x60-0x6F
+        case 0x60: // RTS
+            cpu->pc = pull16(cpu) + 1;
+            cpu->cycles += 6;
+            break;
+        case 0x61: // ADC ($nn,X)
+            adc(cpu, cpu_read(INDIRECT_X()));
+            cpu->cycles += 6;
+            break;
+        case 0x63: // RRA ($nn,X) (illegal)
+            addr = INDIRECT_X();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x65: // ADC $nn
+            adc(cpu, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0x66: // ROR $nn
+            addr = ZERO_PAGE();
+            cpu_write(addr, ror(cpu, cpu_read(addr)));
+            cpu->cycles += 5;
+            break;
+        case 0x67: // RRA $nn (illegal)
+            addr = ZERO_PAGE();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 5;
+            break;
+        case 0x68: // PLA
             cpu->a = pull8(cpu);
             update_nz(cpu, cpu->a);
             cpu->cycles += 4;
             break;
-            
-        // TAX
-        case 0xAA:
-            cpu->x = cpu->a;
-            update_nz(cpu, cpu->x);
+        case 0x69: // ADC #$nn
+            adc(cpu, IMMEDIATE());
             cpu->cycles += 2;
             break;
-            
-        // LDA absolute,X
-        case 0xBD:
-            addr = cpu_read(cpu->pc++) | (cpu_read(cpu->pc++) << 8);
-            cpu->a = cpu_read(addr + cpu->x);
-            update_nz(cpu, cpu->a);
+        case 0x6A: // ROR A
+            cpu->a = ror(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x6B: // ARR #$nn (illegal)
+            and_op(cpu, IMMEDIATE());
+            cpu->a = ror(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x6C: // JMP ($nnnn)
+            addr = ABSOLUTE();
+            // Handle page boundary bug
+            if ((addr & 0xFF) == 0xFF) {
+                cpu->pc = cpu_read(addr) | (cpu_read(addr & 0xFF00) << 8);
+            } else {
+                cpu->pc = cpu_read(addr) | (cpu_read(addr + 1) << 8);
+            }
+            cpu->cycles += 5;
+            break;
+        case 0x6D: // ADC $nnnn
+            adc(cpu, cpu_read(ABSOLUTE()));
             cpu->cycles += 4;
             break;
-            
-        // CLI
-        case 0x58:
-            set_flag(cpu, FLAG_I, false);
-            cpu->cycles += 2;
+        case 0x6E: // ROR $nnnn
+            addr = ABSOLUTE();
+            cpu_write(addr, ror(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x6F: // RRA $nnnn (illegal)
+            addr = ABSOLUTE();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 6;
             break;
             
-        // TXA
-        case 0x8A:
+        // 0x70-0x7F
+        case 0x70: // BVS
+            branch(cpu, get_flag(cpu, FLAG_V));
+            cpu->cycles += 2;
+            break;
+        case 0x71: // ADC ($nn),Y
+            adc(cpu, cpu_read(INDIRECT_Y()));
+            cpu->cycles += 5;
+            break;
+        case 0x73: // RRA ($nn),Y (illegal)
+            addr = INDIRECT_Y();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0x75: // ADC $nn,X
+            adc(cpu, cpu_read(ZERO_PAGE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x76: // ROR $nn,X
+            addr = ZERO_PAGE_X();
+            cpu_write(addr, ror(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0x77: // RRA $nn,X (illegal)
+            addr = ZERO_PAGE_X();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 6;
+            break;
+        case 0x78: // SEI
+            set_flag(cpu, FLAG_I, true);
+            cpu->cycles += 2;
+            break;
+        case 0x79: // ADC $nnnn,Y
+            adc(cpu, cpu_read(ABSOLUTE_Y()));
+            cpu->cycles += 4;
+            break;
+        case 0x7B: // RRA $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 7;
+            break;
+        case 0x7D: // ADC $nnnn,X
+            adc(cpu, cpu_read(ABSOLUTE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0x7E: // ROR $nnnn,X
+            addr = ABSOLUTE_X();
+            cpu_write(addr, ror(cpu, cpu_read(addr)));
+            cpu->cycles += 7;
+            break;
+        case 0x7F: // RRA $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            value = ror(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            adc(cpu, value);
+            cpu->cycles += 7;
+            break;
+            
+        // 0x80-0x8F
+        case 0x80: case 0x82: case 0x89: case 0xC2: case 0xE2: // NOP #$nn (illegal)
+            cpu->pc++;
+            cpu->cycles += 2;
+            break;
+        case 0x81: // STA ($nn,X)
+            cpu_write(INDIRECT_X(), cpu->a);
+            cpu->cycles += 6;
+            break;
+        case 0x83: // SAX ($nn,X) (illegal)
+            cpu_write(INDIRECT_X(), cpu->a & cpu->x);
+            cpu->cycles += 6;
+            break;
+        case 0x84: // STY $nn
+            cpu_write(ZERO_PAGE(), cpu->y);
+            cpu->cycles += 3;
+            break;
+        case 0x85: // STA $nn
+            cpu_write(ZERO_PAGE(), cpu->a);
+            cpu->cycles += 3;
+            break;
+        case 0x86: // STX $nn
+            cpu_write(ZERO_PAGE(), cpu->x);
+            cpu->cycles += 3;
+            break;
+        case 0x87: // SAX $nn (illegal)
+            cpu_write(ZERO_PAGE(), cpu->a & cpu->x);
+            cpu->cycles += 3;
+            break;
+        case 0x88: // DEY
+            cpu->y = dec(cpu, cpu->y);
+            cpu->cycles += 2;
+            break;
+        case 0x8A: // TXA
             cpu->a = cpu->x;
             update_nz(cpu, cpu->a);
             cpu->cycles += 2;
             break;
+        case 0x8B: // XAA #$nn (illegal)
+            cpu->a = cpu->x & IMMEDIATE();
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0x8C: // STY $nnnn
+            cpu_write(ABSOLUTE(), cpu->y);
+            cpu->cycles += 4;
+            break;
+        case 0x8D: // STA $nnnn
+            cpu_write(ABSOLUTE(), cpu->a);
+            cpu->cycles += 4;
+            break;
+        case 0x8E: // STX $nnnn
+            cpu_write(ABSOLUTE(), cpu->x);
+            cpu->cycles += 4;
+            break;
+        case 0x8F: // SAX $nnnn (illegal)
+            cpu_write(ABSOLUTE(), cpu->a & cpu->x);
+            cpu->cycles += 4;
+            break;
             
-        // TYA
-        case 0x98:
+        // 0x90-0x9F
+        case 0x90: // BCC
+            branch(cpu, !get_flag(cpu, FLAG_C));
+            cpu->cycles += 2;
+            break;
+        case 0x91: // STA ($nn),Y
+            cpu_write(INDIRECT_Y(), cpu->a);
+            cpu->cycles += 6;
+            break;
+        case 0x93: // AHX ($nn),Y (illegal)
+            cpu_write(INDIRECT_Y(), cpu->a & cpu->x & ((INDIRECT_Y() >> 8) + 1));
+            cpu->cycles += 6;
+            break;
+        case 0x94: // STY $nn,X
+            cpu_write(ZERO_PAGE_X(), cpu->y);
+            cpu->cycles += 4;
+            break;
+        case 0x95: // STA $nn,X
+            cpu_write(ZERO_PAGE_X(), cpu->a);
+            cpu->cycles += 4;
+            break;
+        case 0x96: // STX $nn,Y
+            cpu_write(ZERO_PAGE_Y(), cpu->x);
+            cpu->cycles += 4;
+            break;
+        case 0x97: // SAX $nn,Y (illegal)
+            cpu_write(ZERO_PAGE_Y(), cpu->a & cpu->x);
+            cpu->cycles += 4;
+            break;
+        case 0x98: // TYA
             cpu->a = cpu->y;
             update_nz(cpu, cpu->a);
             cpu->cycles += 2;
             break;
-            
-        default:
-            printf("Warning: Unimplemented opcode $%02X at $%04X\n", opcode, cpu->pc - 1);
+        case 0x99: // STA $nnnn,Y
+            cpu_write(ABSOLUTE_Y(), cpu->a);
+            cpu->cycles += 5;
+            break;
+        case 0x9A: // TXS
+            cpu->sp = cpu->x;
             cpu->cycles += 2;
+            break;
+        case 0x9B: // TAS $nnnn,Y (illegal)
+            cpu->sp = cpu->a & cpu->x;
+            addr = ABSOLUTE_Y();
+            cpu_write(addr, cpu->sp & ((addr >> 8) + 1));
+            cpu->cycles += 5;
+            break;
+        case 0x9C: // SHY $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            cpu_write(addr, cpu->y & ((addr >> 8) + 1));
+            cpu->cycles += 5;
+            break;
+        case 0x9D: // STA $nnnn,X
+            cpu_write(ABSOLUTE_X(), cpu->a);
+            cpu->cycles += 5;
+            break;
+        case 0x9E: // SHX $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            cpu_write(addr, cpu->x & ((addr >> 8) + 1));
+            cpu->cycles += 5;
+            break;
+        case 0x9F: // AHX $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            cpu_write(addr, cpu->a & cpu->x & ((addr >> 8) + 1));
+            cpu->cycles += 5;
+            break;
+            
+        // 0xA0-0xAF
+        case 0xA0: // LDY #$nn
+            cpu->y = IMMEDIATE();
+            update_nz(cpu, cpu->y);
+            cpu->cycles += 2;
+            break;
+        case 0xA1: // LDA ($nn,X)
+            cpu->a = cpu_read(INDIRECT_X());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 6;
+            break;
+        case 0xA2: // LDX #$nn
+            cpu->x = IMMEDIATE();
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 2;
+            break;
+        case 0xA3: // LAX ($nn,X) (illegal)
+            value = cpu_read(INDIRECT_X());
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 6;
+            break;
+        case 0xA4: // LDY $nn
+            cpu->y = cpu_read(ZERO_PAGE());
+            update_nz(cpu, cpu->y);
+            cpu->cycles += 3;
+            break;
+        case 0xA5: // LDA $nn
+            cpu->a = cpu_read(ZERO_PAGE());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 3;
+            break;
+        case 0xA6: // LDX $nn
+            cpu->x = cpu_read(ZERO_PAGE());
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 3;
+            break;
+        case 0xA7: // LAX $nn (illegal)
+            value = cpu_read(ZERO_PAGE());
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 3;
+            break;
+        case 0xA8: // TAY
+            cpu->y = cpu->a;
+            update_nz(cpu, cpu->y);
+            cpu->cycles += 2;
+            break;
+        case 0xA9: // LDA #$nn
+            cpu->a = IMMEDIATE();
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 2;
+            break;
+        case 0xAA: // TAX
+            cpu->x = cpu->a;
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 2;
+            break;
+        case 0xAB: // LAX #$nn (illegal)
+            value = IMMEDIATE();
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 2;
+            break;
+        case 0xAC: // LDY $nnnn
+            cpu->y = cpu_read(ABSOLUTE());
+            update_nz(cpu, cpu->y);
+            cpu->cycles += 4;
+            break;
+        case 0xAD: // LDA $nnnn
+            cpu->a = cpu_read(ABSOLUTE());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 4;
+            break;
+        case 0xAE: // LDX $nnnn
+            cpu->x = cpu_read(ABSOLUTE());
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 4;
+            break;
+        case 0xAF: // LAX $nnnn (illegal)
+            value = cpu_read(ABSOLUTE());
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 4;
+            break;
+            
+        // 0xB0-0xBF
+        case 0xB0: // BCS
+            branch(cpu, get_flag(cpu, FLAG_C));
+            cpu->cycles += 2;
+            break;
+        case 0xB1: // LDA ($nn),Y
+            cpu->a = cpu_read(INDIRECT_Y());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 5;
+            break;
+        case 0xB3: // LAX ($nn),Y (illegal)
+            value = cpu_read(INDIRECT_Y());
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 5;
+            break;
+        case 0xB4: // LDY $nn,X
+            cpu->y = cpu_read(ZERO_PAGE_X());
+            update_nz(cpu, cpu->y);
+            cpu->cycles += 4;
+            break;
+        case 0xB5: // LDA $nn,X
+            cpu->a = cpu_read(ZERO_PAGE_X());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 4;
+            break;
+        case 0xB6: // LDX $nn,Y
+            cpu->x = cpu_read(ZERO_PAGE_Y());
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 4;
+            break;
+        case 0xB7: // LAX $nn,Y (illegal)
+            value = cpu_read(ZERO_PAGE_Y());
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 4;
+            break;
+        case 0xB8: // CLV
+            set_flag(cpu, FLAG_V, false);
+            cpu->cycles += 2;
+            break;
+        case 0xB9: // LDA $nnnn,Y
+            cpu->a = cpu_read(ABSOLUTE_Y());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 4;
+            break;
+        case 0xBA: // TSX
+            cpu->x = cpu->sp;
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 2;
+            break;
+        case 0xBB: // LAS $nnnn,Y (illegal)
+            value = cpu_read(ABSOLUTE_Y()) & cpu->sp;
+            cpu->a = cpu->x = cpu->sp = value;
+            update_nz(cpu, value);
+            cpu->cycles += 4;
+            break;
+        case 0xBC: // LDY $nnnn,X
+            cpu->y = cpu_read(ABSOLUTE_X());
+            update_nz(cpu, cpu->y);
+            cpu->cycles += 4;
+            break;
+        case 0xBD: // LDA $nnnn,X
+            cpu->a = cpu_read(ABSOLUTE_X());
+            update_nz(cpu, cpu->a);
+            cpu->cycles += 4;
+            break;
+        case 0xBE: // LDX $nnnn,Y
+            cpu->x = cpu_read(ABSOLUTE_Y());
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 4;
+            break;
+        case 0xBF: // LAX $nnnn,Y (illegal)
+            value = cpu_read(ABSOLUTE_Y());
+            cpu->a = cpu->x = value;
+            update_nz(cpu, value);
+            cpu->cycles += 4;
+            break;
+            
+        // 0xC0-0xCF
+        case 0xC0: // CPY #$nn
+            cmp(cpu, cpu->y, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0xC1: // CMP ($nn,X)
+            cmp(cpu, cpu->a, cpu_read(INDIRECT_X()));
+            cpu->cycles += 6;
+            break;
+        case 0xC3: // DCP ($nn,X) (illegal)
+            addr = INDIRECT_X();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 8;
+            break;
+        case 0xC4: // CPY $nn
+            cmp(cpu, cpu->y, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0xC5: // CMP $nn
+            cmp(cpu, cpu->a, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0xC6: // DEC $nn
+            addr = ZERO_PAGE();
+            cpu_write(addr, dec(cpu, cpu_read(addr)));
+            cpu->cycles += 5;
+            break;
+        case 0xC7: // DCP $nn (illegal)
+            addr = ZERO_PAGE();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 5;
+            break;
+        case 0xC8: // INY
+            cpu->y = inc(cpu, cpu->y);
+            cpu->cycles += 2;
+            break;
+        case 0xC9: // CMP #$nn
+            cmp(cpu, cpu->a, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0xCA: // DEX
+            cpu->x = dec(cpu, cpu->x);
+            cpu->cycles += 2;
+            break;
+        case 0xCB: // AXS #$nn (illegal)
+            value = IMMEDIATE();
+            cpu->x = (cpu->a & cpu->x) - value;
+            set_flag(cpu, FLAG_C, (cpu->a & cpu->x) >= value);
+            update_nz(cpu, cpu->x);
+            cpu->cycles += 2;
+            break;
+        case 0xCC: // CPY $nnnn
+            cmp(cpu, cpu->y, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0xCD: // CMP $nnnn
+            cmp(cpu, cpu->a, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0xCE: // DEC $nnnn
+            addr = ABSOLUTE();
+            cpu_write(addr, dec(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0xCF: // DCP $nnnn (illegal)
+            addr = ABSOLUTE();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 6;
+            break;
+            
+        // 0xD0-0xDF
+        case 0xD0: // BNE
+            branch(cpu, !get_flag(cpu, FLAG_Z));
+            cpu->cycles += 2;
+            break;
+        case 0xD1: // CMP ($nn),Y
+            cmp(cpu, cpu->a, cpu_read(INDIRECT_Y()));
+            cpu->cycles += 5;
+            break;
+        case 0xD3: // DCP ($nn),Y (illegal)
+            addr = INDIRECT_Y();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 8;
+            break;
+        case 0xD5: // CMP $nn,X
+            cmp(cpu, cpu->a, cpu_read(ZERO_PAGE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0xD6: // DEC $nn,X
+            addr = ZERO_PAGE_X();
+            cpu_write(addr, dec(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0xD7: // DCP $nn,X (illegal)
+            addr = ZERO_PAGE_X();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 6;
+            break;
+        case 0xD8: // CLD
+            set_flag(cpu, FLAG_D, false);
+            cpu->cycles += 2;
+            break;
+        case 0xD9: // CMP $nnnn,Y
+            cmp(cpu, cpu->a, cpu_read(ABSOLUTE_Y()));
+            cpu->cycles += 4;
+            break;
+        case 0xDB: // DCP $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 7;
+            break;
+        case 0xDD: // CMP $nnnn,X
+            cmp(cpu, cpu->a, cpu_read(ABSOLUTE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0xDE: // DEC $nnnn,X
+            addr = ABSOLUTE_X();
+            cpu_write(addr, dec(cpu, cpu_read(addr)));
+            cpu->cycles += 7;
+            break;
+        case 0xDF: // DCP $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            value = dec(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            cmp(cpu, cpu->a, value);
+            cpu->cycles += 7;
+            break;
+            
+        // 0xE0-0xEF
+        case 0xE0: // CPX #$nn
+            cmp(cpu, cpu->x, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0xE1: // SBC ($nn,X)
+            sbc(cpu, cpu_read(INDIRECT_X()));
+            cpu->cycles += 6;
+            break;
+        case 0xE3: // ISB ($nn,X) (illegal)
+            addr = INDIRECT_X();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0xE4: // CPX $nn
+            cmp(cpu, cpu->x, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0xE5: // SBC $nn
+            sbc(cpu, cpu_read(ZERO_PAGE()));
+            cpu->cycles += 3;
+            break;
+        case 0xE6: // INC $nn
+            addr = ZERO_PAGE();
+            cpu_write(addr, inc(cpu, cpu_read(addr)));
+            cpu->cycles += 5;
+            break;
+        case 0xE7: // ISB $nn (illegal)
+            addr = ZERO_PAGE();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 5;
+            break;
+        case 0xE8: // INX
+            cpu->x = inc(cpu, cpu->x);
+            cpu->cycles += 2;
+            break;
+        case 0xE9: case 0xEB: // SBC #$nn
+            sbc(cpu, IMMEDIATE());
+            cpu->cycles += 2;
+            break;
+        case 0xEA: // NOP
+            cpu->cycles += 2;
+            break;
+        case 0xEC: // CPX $nnnn
+            cmp(cpu, cpu->x, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0xED: // SBC $nnnn
+            sbc(cpu, cpu_read(ABSOLUTE()));
+            cpu->cycles += 4;
+            break;
+        case 0xEE: // INC $nnnn
+            addr = ABSOLUTE();
+            cpu_write(addr, inc(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0xEF: // ISB $nnnn (illegal)
+            addr = ABSOLUTE();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 6;
+            break;
+            
+        // 0xF0-0xFF
+        case 0xF0: // BEQ
+            branch(cpu, get_flag(cpu, FLAG_Z));
+            cpu->cycles += 2;
+            break;
+        case 0xF1: // SBC ($nn),Y
+            sbc(cpu, cpu_read(INDIRECT_Y()));
+            cpu->cycles += 5;
+            break;
+        case 0xF3: // ISB ($nn),Y (illegal)
+            addr = INDIRECT_Y();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 8;
+            break;
+        case 0xF5: // SBC $nn,X
+            sbc(cpu, cpu_read(ZERO_PAGE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0xF6: // INC $nn,X
+            addr = ZERO_PAGE_X();
+            cpu_write(addr, inc(cpu, cpu_read(addr)));
+            cpu->cycles += 6;
+            break;
+        case 0xF7: // ISB $nn,X (illegal)
+            addr = ZERO_PAGE_X();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 6;
+            break;
+        case 0xF8: // SED
+            set_flag(cpu, FLAG_D, true);
+            cpu->cycles += 2;
+            break;
+        case 0xF9: // SBC $nnnn,Y
+            sbc(cpu, cpu_read(ABSOLUTE_Y()));
+            cpu->cycles += 4;
+            break;
+        case 0xFB: // ISB $nnnn,Y (illegal)
+            addr = ABSOLUTE_Y();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 7;
+            break;
+        case 0xFD: // SBC $nnnn,X
+            sbc(cpu, cpu_read(ABSOLUTE_X()));
+            cpu->cycles += 4;
+            break;
+        case 0xFE: // INC $nnnn,X
+            addr = ABSOLUTE_X();
+            cpu_write(addr, inc(cpu, cpu_read(addr)));
+            cpu->cycles += 7;
+            break;
+        case 0xFF: // ISB $nnnn,X (illegal)
+            addr = ABSOLUTE_X();
+            value = inc(cpu, cpu_read(addr));
+            cpu_write(addr, value);
+            sbc(cpu, value);
+            cpu->cycles += 7;
             break;
     }
 }
