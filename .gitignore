@@ -8,4 +8,6 @@ components/mruby_component/esp32_build_config.rb.lock
 dependencies.lock
 ref/
 spiffs_data/nsf/test.nsf
+spiffs_data/nsf_local/
 log/
+temp/

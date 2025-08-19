@@ -129,9 +129,11 @@ void emu_task(void* arg)
     srand(esp_timer_get_time());
 
     //emu init
-    std::string rom_file = "/nsf/continuous_tone_single.nsf";
+    //std::string rom_file = "/nsf/continuous_tone_single.nsf";
     //std::string rom_file = "/nsf/test.nsf";
     //std::string rom_file = "/nsf/minimal_test.nsf";
+    std::string rom_file = "/nsf_local/dq.nsf";
+    //std::string rom_file = "/nsf_local/meikyu.nsf";
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
         printf("Failed to load ROM, suspending emu_task\n");
         vTaskSuspend(NULL);  // Suspend this task to prevent crashes
@@ -139,8 +141,8 @@ void emu_task(void* arg)
     }
 
     // 60Hz timing constants
-    //const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
-    const uint64_t target_frame_time_us = 16639;  // 60.0988Hz = 16.639ms
+    const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
+    //const uint64_t target_frame_time_us = 16639;  // 60.0988Hz = 16.639ms
     uint64_t next_frame_time = esp_timer_get_time();
     uint32_t frame_count = 0;
     uint32_t total_processing_time = 0;

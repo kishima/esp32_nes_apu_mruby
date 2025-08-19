@@ -590,8 +590,7 @@ public:
         printf("NSF: Executing INIT with simple method\n");
         int executed_total = 0;
         
-        // INITルーチンは通常数十サイクルで完了するため、十分な余裕をもって実行
-        int executed = nes6502_execute(200);  // 200サイクルで十分
+        int executed = nes6502_execute(2000);
         executed_total = executed;
         
         printf("NSF: INIT routine executed %d cycles\n", executed);

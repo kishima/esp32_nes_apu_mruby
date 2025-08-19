@@ -28,9 +28,7 @@
 #include "log.h"
 #include "nes_apu.h"
 #include "nes6502.h"
-#ifdef ESP_PLATFORM
 #include "esp_timer.h"
-#endif
 
 // APUデバッグログ制御フラグ
 #define APU_DEBUG       0    // APU処理詳細ログ
