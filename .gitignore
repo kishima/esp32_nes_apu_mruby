@@ -11,3 +11,8 @@ spiffs_data/nsf/test.nsf
 spiffs_data/nsf_local/
 log/
 temp/
+nsf_player/*.o
+nsf_player/nsf_player
+nsf_player/log*
+
+
