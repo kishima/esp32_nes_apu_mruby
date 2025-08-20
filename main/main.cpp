@@ -25,6 +25,10 @@
 #include <stdlib.h>
 #include "soc/rtc.h"
 
+extern "C" {
+#include "picoruby-esp32.h"
+}
+
 // デバッグログ制御フラグ
 #define AUDIO_DEBUG 0  // オーディオフレーム詳細ログ
 
@@ -245,10 +249,7 @@ extern "C" void app_main(void)
   }
   printf("emulator gets started. video_init done\n");
 
-  //TODO: exec mruby here
-
-  while(true){
-    vTaskDelay(100);
-    // Dump some stats
-  }
+  printf("start picoruby-esp32\n");
+  picoruby_esp32();
+  printf("end picoruby-esp32\n");
 }
