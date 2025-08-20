@@ -1,0 +1,62 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  GIT_DISCOVERY_ACROSS_FILESYSTEM: 1
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout recursive
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth:  p
+
+    - name: Debug submodules
+      working-directory: ${{ github.workspace }}
+      run: |
+        git submodule status
+        git submodule foreach 'git status --short'
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+        bundler-cache: false
+
+    - name: Bundle install
+      working-directory: ${{ github.workspace }}
+      run: |
+        bundle install
+
+    - name: Setup mruby
+      env:
+        MRUBY_DIR: ${{ runner.temp }}/mruby
+        MRUBY_VERSION: '3.4.0'
+      run: |
+        rm -rf "$MRUBY_DIR"
+        git clone -b "$MRUBY_VERSION" --depth 1 \
+          https://github.com/mruby/mruby.git "$MRUBY_DIR"
+        cd "$MRUBY_DIR"
+        rake
+
+    #- name: Setup tmate session
+    #  uses: mxschmitt/action-tmate@v3
+
+    - name: Test all
+      env:
+        MRUBY_DIR: ${{ runner.temp }}/mruby
+        PICORBC_COMMAND: $PWD/bin/picorbc
+        MRUBY_COMMAND: $MRUBY_DIR/bin/mruby
+      run: rake test:all
+

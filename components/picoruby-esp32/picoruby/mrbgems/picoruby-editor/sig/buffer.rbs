@@ -1,0 +1,38 @@
+# TypeProf 0.21.3
+
+# @sidebar builtin
+# @added_by picoruby-editor
+class Array[unchecked out Elem] < Object
+  def insert: (Integer index, *Elem) -> void
+end
+
+# Classes
+module Editor
+  class Buffer
+    @prev_c: :DOWN | :UP
+
+    attr_accessor lines: Array[String]
+    attr_accessor changed: bool
+    attr_reader cursor_x: Integer
+    attr_reader cursor_y: Integer
+
+    def self.new: () -> instance
+    def current_line: () -> String
+    def current_char: () -> String?
+    def clear: () -> void
+    def dump: () -> String
+    def home: () -> void
+    def head: () -> void
+    def tail: () -> void
+    def bottom: () -> void
+    def left: () -> void
+    def right: () -> void
+    def up: () -> void
+    def down: () -> void
+    def put: (String | Symbol c) -> void
+    def delete: () -> void
+    def delete_line: () -> (String | nil)
+    def insert_line: (String | nil line) -> void
+    def current_tail: (?Integer n) -> String
+  end
+end

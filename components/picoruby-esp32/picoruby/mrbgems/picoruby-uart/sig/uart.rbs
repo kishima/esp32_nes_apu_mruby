@@ -1,0 +1,69 @@
+# @sidebar io_peripheral
+class UART
+
+  # @sidebar io_peripheral
+  class RxBuffer
+  end
+
+  type unit_t = Symbol|String
+
+  PARITY_NONE: 0
+  PARITY_ODD: 1
+  PARITY_EVEN: 2
+  FLOW_CONTROL_NONE: 0
+  FLOW_CONTROL_RTS_CTS: 1
+  FLOW_CONTROL_XON_XOFF: 2
+
+  @unit_num: Integer
+  @rx_buffer: UART::RxBuffer
+  @line_ending: ("\n"|"\r\n"|"\r")
+
+  attr_reader baudrate: Integer
+
+  def self.new: (
+    unit: unit_t,
+    ?txd_pin: Integer,
+    ?rxd_pin: Integer,
+    ?baudrate: Integer,
+    ?data_bits: Integer,
+    ?stop_bits: Integer,
+    ?parity: Integer,
+    ?flow_control: Integer,
+    ?rts_pin: Integer,
+    ?cts_pin: Integer,
+    ?rx_buffer_size: Integer?
+  ) -> instance
+  private def open_rx_buffer: (Integer|nil rx_buffer_size) -> UART::RxBuffer
+  private def open_connection: (
+    String unit,
+    Integer txd_pin,
+    Integer rxd_pin,
+    UART::RxBuffer rx_buffer
+  ) -> Integer
+  def setmode: (
+    ?baudrate: Integer?,
+    ?data_bits: Integer?,
+    ?stop_bits: Integer?,
+    ?parity: Integer?,
+    ?flow_control: Integer?,
+    ?rts_pin: Integer?,
+    ?cts_pin: Integer?
+  ) -> self
+  private def _set_baudrate: (Integer baudrate) -> Integer
+  def set_flow_control: (Integer flow_control, Integer rts_pin, Integer cts_pin) -> void
+  private def _set_flow_control: (bool rts, bool cts) -> void
+  private def _set_function: (Integer pin) -> void
+  def set_format: (Integer data_bits, Integer stop_bits, Integer parity) -> void
+  private def _set_format: (Integer data_bits, Integer stop_bits, Integer parity) -> void
+  def read: (?Integer len) -> (String | nil)
+  def readpartial: (Integer maxlen) -> String
+  def bytes_available: () -> Integer
+  def line_ending=: (("\n"|"\r\n"|"\r") line_ending) -> void
+  def puts: (String str) -> nil
+  def gets: () -> String?
+  def write: (String str) -> Integer
+  def flush: () -> self
+  def clear_tx_buffer: () -> self
+  def clear_rx_buffer: () -> self
+  def break: (?Integer|Float time) -> self
+end

@@ -1,0 +1,32 @@
+# @sidebar hardware_device
+class MCP3x0x
+  DEFAULT_FREQUENCY: 500_000
+
+  @spi: SPI
+  @cs: GPIO
+
+  def self.new: (
+    unit: Symbol,
+    ?frequency: Integer,
+    ?sck_pin: Integer,
+    ?cipo_pin: Integer,
+    ?copi_pin: Integer,
+    ?cs_pin: Integer
+  ) -> instance
+  def read: (Integer channel, ?differential: bool) -> Integer
+end
+
+# @sidebar hardware_device
+class MCP3004 < MCP3008
+end
+
+# @sidebar hardware_device
+class MCP3008 < MCP3x0x
+end
+# @sidebar hardware_device
+class MCP3204 < MCP3x0x
+end
+
+# @sidebar hardware_device
+class MCP3208 < MCP3x0x
+end

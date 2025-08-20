@@ -1,0 +1,24 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+tab_width = 8
+
+[{*.rb,*.gemspec,Rakefile,*.yml}]
+indent_style = space
+indent_size = 2
+
+[{*.java,*.java.erb}]
+indent_style = space
+indent_size = 4
+
+[{*[Mm]akefile*,*.mak,*.mk,depend}]
+indent_style = tab
+indent_size = 4
+tab_width = 4

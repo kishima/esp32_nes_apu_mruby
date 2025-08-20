@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      action-deps:
+        patterns:
+          - "*"
+  - package-ecosystem: 'maven'
+    directory: '/java-wasm'
+    schedule:
+      interval: 'weekly'
+    groups:
+      java-deps:
+        patterns:
+          - "*"
+  - package-ecosystem: 'bundler'
+    directories:
+      - '/gemfiles/2.7'
+      - '/gemfiles/3.0'
+      - '/gemfiles/3.1'
+      - '/gemfiles/3.2'
+      - '/gemfiles/3.3'
+      - '/gemfiles/3.4'
+      - '/gemfiles/3.5'
+      - '/gemfiles/jruby'
+      - '/gemfiles/truffleruby'
+      - '/gemfiles/typecheck'
+    schedule:
+      interval: 'weekly'
+    groups:
+      ruby-deps:
+        patterns:
+          - "*"

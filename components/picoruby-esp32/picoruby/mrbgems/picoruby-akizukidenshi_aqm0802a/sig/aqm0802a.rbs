@@ -1,0 +1,15 @@
+# @sidebar hardware_device
+class AQM0802A
+  ADDRESS: Integer
+
+  @i2c: I2C
+
+  def initialize: (i2c: I2C, ?init: bool) -> void
+  def reset: () -> self
+  def print: (String line) -> nil
+  def putc: (Integer c) -> Integer
+  def write_instruction: (Integer inst) -> self
+  def clear: () -> self
+  def home: () -> self
+  def break_line: () -> self
+end

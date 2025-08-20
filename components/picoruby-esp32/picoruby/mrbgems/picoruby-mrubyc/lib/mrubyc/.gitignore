@@ -1,0 +1,31 @@
+# Executables
+sample_scheduler
+sample_include
+sample_concurrent
+sample_myclass
+sample_no_scheduler
+mrbc
+
+# build directory
+build/
+
+# Object files
+*.o
+*.a
+
+# mruby bytecode
+*.mrb
+
+# backup file
+*~
+*.bak*
+
+# Mac
+.DS_Store
+*.dSYM
+
+# doxygen output
+html/
+
+# PicoRuby for testing
+picoruby/

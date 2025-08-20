@@ -1,0 +1,11 @@
+# @sidebar hardware_device
+class AHT25
+  ADDRESS: Integer
+
+  @i2c: I2C
+
+  def self.new: (i2c: I2C) -> instance
+  def check: () -> bool
+  def reset: () -> void
+  def read: () -> { temperature: Float, humidity: Float }
+end

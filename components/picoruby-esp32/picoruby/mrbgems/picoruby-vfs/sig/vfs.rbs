@@ -1,0 +1,46 @@
+# TypeProf 0.21.3
+
+# Classes
+class VFS
+  type driver_t = FAT
+  type volume_t = {mountpoint: String, driver: driver_t}
+  type file_t = FAT::File
+  type dir_t = FAT::Dir
+
+  VOLUMES: Array[volume_t]
+
+  def self.mount: (driver_t driver, String mountpoint) -> void
+  def self.unmount: (driver_t driver, ?bool force) -> void
+  def self.chdir: (String dir) -> 0
+  def self.pwd: -> String
+  def self.mkdir: (String path, ?Integer mode) -> 0
+  def self.rename: (String from, String to) -> 0
+  def self.unlink: (String path) -> 0
+  def self.chmod: (Integer mode, String path) -> 0
+  def self.exist?: (String path) -> bool
+  def self.directory?: (String path) -> untyped
+  def self.sanitize_and_split: (String path) -> [volume_t, String]
+  def self.sanitize: (String path) -> String
+  def self.split: (String sanitized_path) -> [volume_t, String]
+  def self.volume_index: (untyped mountpoint) -> Integer?
+  def self.contiguous?: (String path) -> bool
+
+  class File
+    def self.open: (String path, String mode) -> file_t
+    def self.utime: (Time atime, Time mtime, *String filename) -> Integer
+    def self.new: (String path, String mode) -> void
+    def initialize: (String path, String mode) -> void
+    def physical_address: () -> Integer
+    def sector_size: () -> Integer
+  end
+
+  class Dir
+    def self.open: (String) -> dir_t
+    def pat=: (array[path] | path) -> Array[String]
+  end
+end
+
+class File
+  def physical_address: () -> Integer
+  def sector_size: () -> Integer
+end
