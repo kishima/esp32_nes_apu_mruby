@@ -133,10 +133,10 @@ void emu_task(void* arg)
     srand(esp_timer_get_time());
 
     //emu init
-    //std::string rom_file = "/nsf/continuous_tone_single.nsf";
+    std::string rom_file = "/nsf/continuous_tone_single.nsf";
     //std::string rom_file = "/nsf/test.nsf";
     //std::string rom_file = "/nsf/minimal_test.nsf";
-    std::string rom_file = "/nsf_local/dq.nsf";
+    //std::string rom_file = "/nsf_local/dq.nsf";
     //std::string rom_file = "/nsf_local/meikyu.nsf";
     if (_emu->insert(rom_file.c_str(),0,0) != 0) {
         printf("Failed to load ROM, suspending emu_task\n");
@@ -230,12 +230,14 @@ esp_err_t mount_filesystem()
 extern "C" void app_main(void)
 {    
   printf("app_main on core %d\n", xPortGetCoreID()); 
+#if 0
   mount_filesystem();                       // mount the filesystem!
   //_emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
   _emu = NewNsfplayer(VIDEO_STANDARD);       // create the emulator!
 
   // create for Emulator task
   // nofrendo needs 5k word stack, start on core 1
+
   xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 4, NULL, 1);
   
   while(true){
@@ -248,7 +250,7 @@ extern "C" void app_main(void)
     vTaskDelay(1);
   }
   printf("emulator gets started. video_init done\n");
-
+#endif
   printf("start picoruby-esp32\n");
   picoruby_esp32();
   printf("end picoruby-esp32\n");

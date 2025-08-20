@@ -9,10 +9,15 @@
 #define HEAP_SIZE (1024 * 128)
 #endif
 
-static uint8_t heap_pool[HEAP_SIZE];
+#include "esp_heap_caps.h"
+//static uint8_t heap_pool[HEAP_SIZE];
+
+static uint8_t* heap_pool;
 
 void picoruby_esp32(void)
 {
+  printf("use PSRAM for mruby heap\n");
+  heap_pool = heap_caps_malloc(HEAP_SIZE, MALLOC_CAP_SPIRAM);
   mrbc_init(heap_pool, HEAP_SIZE);
 
   mrbc_tcb *main_tcb = mrbc_create_task(main_task, 0);
