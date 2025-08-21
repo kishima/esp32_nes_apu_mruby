@@ -3,6 +3,7 @@
 ## Build System
 
 **Primary Build Method:**
+
 ```bash
 ./.devcontainer/run_devcontainer.sh idf.py build
 ./.devcontainer/run_devcontainer.sh idf.py flash

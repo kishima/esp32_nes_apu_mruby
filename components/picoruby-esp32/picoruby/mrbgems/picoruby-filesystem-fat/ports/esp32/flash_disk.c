@@ -26,7 +26,6 @@ int FLASH_disk_erase(void) {
 }
 
 int FLASH_disk_initialize(void) {
-  printf("[FLASH_DISK] Initialize - offset=0x%x size=0x%x\n", FLASH_OFFSET, FLASH_SIZE);
   if (handle == 0) {
     esp_err_t ret = spi_flash_mmap(
       FLASH_OFFSET,
@@ -36,18 +35,8 @@ int FLASH_disk_initialize(void) {
       &handle
     );
     if(ret != ESP_OK) {
-      printf("[FLASH_DISK] mmap failed: %s\n", esp_err_to_name(ret));
       return STA_NOINIT;
     }
-    printf("[FLASH_DISK] Mapped to: %p\n", mapped_addr);
-    
-    // Check first 16 bytes to verify partition state
-    uint8_t *data = (uint8_t*)mapped_addr;
-    printf("[FLASH_DISK] First 16 bytes: ");
-    for(int i = 0; i < 16; i++) {
-      printf("%02x ", data[i]);
-    }
-    printf("\n");
   }
 
   return RES_OK;
@@ -92,25 +81,21 @@ int FLASH_disk_write(const BYTE *buff, LBA_t sector, UINT count) {
 DRESULT FLASH_disk_ioctl(BYTE cmd, void *buff) {
   switch (cmd) {
     case CTRL_SYNC:
-      printf("[FLASH_DISK] ioctl CTRL_SYNC\n");
+      // TODO
       break;
     case GET_BLOCK_SIZE:
       *((DWORD *)buff) = (DWORD)BLOCK_SIZE;
-      printf("[FLASH_DISK] ioctl GET_BLOCK_SIZE: %d\n", BLOCK_SIZE);
       break;
     case CTRL_TRIM:
-      printf("[FLASH_DISK] ioctl CTRL_TRIM - not implemented\n");
+      // TODO
       return RES_ERROR;
     case GET_SECTOR_SIZE:
       *((WORD *)buff) = (WORD)SPI_FLASH_SEC_SIZE;
-      printf("[FLASH_DISK] ioctl GET_SECTOR_SIZE: %d\n", SPI_FLASH_SEC_SIZE);
       break;
     case GET_SECTOR_COUNT:
       *((LBA_t *)buff) = (LBA_t)(FLASH_SIZE / SPI_FLASH_SEC_SIZE);
-      printf("[FLASH_DISK] ioctl GET_SECTOR_COUNT: %d\n", (int)(FLASH_SIZE / SPI_FLASH_SEC_SIZE));
       break;
     default :
-      printf("[FLASH_DISK] ioctl unknown command: %d\n", cmd);
       return RES_PARERR;
   }
   return RES_OK;
