@@ -1,6 +1,7 @@
 idf_component_register(
-    SRCS "src/emu.cpp" 
+    SRCS "src/apu_if.cpp" 
          "src/emu_nofrendo.cpp" 
+         "src/emu.cpp" 
          "src/nofrendo/bitmap.c"
          "src/nofrendo/config.c"
          "src/nofrendo/event.c"
