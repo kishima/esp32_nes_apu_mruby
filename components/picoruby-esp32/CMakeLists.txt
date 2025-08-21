@@ -34,6 +34,7 @@ idf_component_register(
     esp_timer
     esp_hw_support
     spi_flash
+    apu_emu
 )
 
 add_definitions(

@@ -65,7 +65,9 @@ idf_component_register(
          "src/nofrendo/osd.c"
          "src/nofrendo/vid_drv.c"
          "src/nofrendo/vrcvisnd.c"
-    INCLUDE_DIRS 
+    INCLUDE_DIRS
+        "include"
+    PRIV_INCLUDE_DIRS
         "src"
         "src/nofrendo"
     REQUIRES 

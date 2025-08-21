@@ -1,4 +1,4 @@
-puts "hello mruby"
+puts "start main_task.rb"
 require 'machine'
 require "watchdog"
 Watchdog.disable
