@@ -510,6 +510,7 @@ void pal_init();
 
 void video_init(int samples_per_cc, int machine, const uint32_t* palette, int ntsc)
 {
+    //printf(">>>>>>>>>>>>> %d,%d,%d\n",samples_per_cc,machine,ntsc);
     _samples_per_cc = samples_per_cc;
     _machine = machine;
     _palette = palette;
