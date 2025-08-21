@@ -133,7 +133,7 @@ void emu_task(void* arg)
     srand(esp_timer_get_time());
 
     //emu init
-    std::string rom_file = "/nsf/continuous_tone_single.nsf";
+    std::string rom_file = "/audio/nsf/continuous_tone_single.nsf";
     //std::string rom_file = "/nsf/test.nsf";
     //std::string rom_file = "/nsf/minimal_test.nsf";
     //std::string rom_file = "/nsf_local/dq.nsf";
@@ -214,8 +214,8 @@ esp_err_t mount_filesystem()
   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
   uint32_t t = esp_timer_get_time() / 1000;
   esp_vfs_spiffs_conf_t conf = {
-    .base_path = "",
-    .partition_label = NULL,
+    .base_path = "/audio",
+    .partition_label = "audio",
     .max_files = 5,
     .format_if_mount_failed = true  // force?
   };
@@ -230,14 +230,12 @@ esp_err_t mount_filesystem()
 extern "C" void app_main(void)
 {    
   printf("app_main on core %d\n", xPortGetCoreID()); 
-#if 0
+#if 1
   mount_filesystem();                       // mount the filesystem!
-  //_emu = NewNofrendo(VIDEO_STANDARD);       // create the emulator!
   _emu = NewNsfplayer(VIDEO_STANDARD);       // create the emulator!
 
   // create for Emulator task
   // nofrendo needs 5k word stack, start on core 1
-
   xTaskCreatePinnedToCore(emu_task, "emu_task", 5*1024, NULL, 4, NULL, 1);
   
   while(true){
