@@ -8,8 +8,8 @@
 #include "../../lib/ff14b/source/diskio.h"
 
 #define BLOCK_SIZE   (16 * SPI_FLASH_SEC_SIZE)
-#define FLASH_SIZE   (1024 * 1024)
-#define FLASH_OFFSET (0x110000)
+#define FLASH_SIZE   (512 * 1024)
+#define FLASH_OFFSET (0x200000)
 
 static void *mapped_addr = NULL;
 static spi_flash_mmap_handle_t handle = 0;
