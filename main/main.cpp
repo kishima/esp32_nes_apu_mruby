@@ -230,7 +230,7 @@ esp_err_t mount_filesystem()
 extern "C" void app_main(void)
 {    
   printf("app_main on core %d\n", xPortGetCoreID()); 
-#if 1
+#if 0
   mount_filesystem();                       // mount the filesystem!
   _emu = NewNsfplayer(VIDEO_STANDARD);       // create the emulator!
 
