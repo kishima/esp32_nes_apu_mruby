@@ -20,6 +20,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "NDEBUG"
 
   #conf.gembox 'peripherals'
+  #conf.gem core: 'picoruby-gpio' # this is required by shell without dependency.
+
   conf.gembox 'r2p2'
   conf.gem core: "picoruby-machine"
   conf.gem core: "picoruby-picorubyvm"

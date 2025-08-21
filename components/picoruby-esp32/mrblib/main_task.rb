@@ -1,3 +1,4 @@
+puts "hello mruby"
 require 'machine'
 require "watchdog"
 Watchdog.disable

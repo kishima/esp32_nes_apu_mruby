@@ -4,5 +4,5 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(nes-apu-mruby)
 
 # Generate SPIFFS image from spiffs_data directory
-spiffs_create_partition_image(storage spiffs_data FLASH_IN_PROJECT)
+spiffs_create_partition_image(audio spiffs_data FLASH_IN_PROJECT)
 

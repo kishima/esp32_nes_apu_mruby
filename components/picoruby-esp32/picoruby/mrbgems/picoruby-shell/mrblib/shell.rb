@@ -5,7 +5,7 @@ require "crc"
 require "machine"
 require 'yaml'
 begin
-  require 'gpio'
+  #require 'gpio'
   require "filesystem-fat"
   require "vfs"
 rescue LoadError
