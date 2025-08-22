@@ -39,11 +39,8 @@ extern "C" {
 #include "emu.h"
 #include "video_out.h"
 
-// esp_8_bit
-#define VIDEO_STANDARD NTSC
-
-//Emu* _emu = 0;
 int _sample_count = -1;
+uint8_t* _input_data;
 
 using namespace std;
 
@@ -51,17 +48,10 @@ using namespace std;
 
 void update_audio()
 {
-    // if (!_emu) {
-    //     printf("[AUDIO_ERROR] Emulator pointer is NULL in update_audio()\n");
-    //     return;
-    // }
-    
    //_emu->update();  // PLAYルーチンを実行
 
     int16_t abuffer[(NTSC_SAMPLE+1)*2];
     memset(abuffer,0,sizeof(abuffer));
-    // int format = _emu->audio_format >> 8;
-    // _sample_count = _emu->frame_sample_count();
     _sample_count = apuif_frame_sample_count();
     
     // サンプル数の検証
@@ -102,54 +92,80 @@ void update_audio()
   audio_write_16(abuffer,_sample_count,1);  // 強制的にモノラル(1チャンネル)に設定
 }
 
-// esp_err_t mount_filesystem()
-// {
-//   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
-//   uint32_t t = esp_timer_get_time() / 1000;
-//   esp_vfs_spiffs_conf_t conf = {
-//     .base_path = "/audio",
-//     .partition_label = "audio",
-//     .max_files = 5,
-//     .format_if_mount_failed = true  // force?
-//   };
-//   esp_err_t e = esp_vfs_spiffs_register(&conf);
-//   if (e != 0)
-//     printf("Failed to mount or format filesystem: %d. Use 'ESP32 Sketch Data Upload' from 'Tools' menu\n",e);
-//   vTaskDelay(1);
-//   printf("... mounted in %" PRIu32 " ms\n", (uint32_t)(esp_timer_get_time() / 1000) - t);
-//   return e;
-// }
+esp_err_t mount_filesystem()
+{
+  printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
+  uint32_t t = esp_timer_get_time() / 1000;
+  esp_vfs_spiffs_conf_t conf = {
+    .base_path = "/audio",
+    .partition_label = "audio",
+    .max_files = 5,
+    .format_if_mount_failed = true  // force?
+  };
+  esp_err_t e = esp_vfs_spiffs_register(&conf);
+  if (e != 0)
+    printf("Failed to mount or format filesystem: %d. Use 'ESP32 Sketch Data Upload' from 'Tools' menu\n",e);
+  vTaskDelay(1);
+  printf("... mounted in %" PRIu32 " ms\n", (uint32_t)(esp_timer_get_time() / 1000) - t);
+  return e;
+}
 
+uint8_t* load_file_from_spiffs(const char* filename, int* size) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        printf("Failed to open file: %s\n", filename);
+        return nullptr;
+    }
 
-// dual core mode runs emulator on comms core
+    // Get file size
+    fseek(file, 0, SEEK_END);
+    *size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Allocate memory and read file
+    uint8_t* file_data = (uint8_t*)malloc(*size);
+    if (!file_data) {
+        printf("Failed to allocate memory for the file\n");
+        fclose(file);
+        return nullptr;
+    }
+
+    size_t read_bytes = fread(file_data, 1, *size, file);
+    fclose(file);
+
+    if (read_bytes != *size) {
+        printf("Failed to read complete file\n");
+        free(file_data);
+        return nullptr;
+    }
+
+    printf("Loaded file %s: %d bytes\n", filename, *size);
+    return file_data;
+}
+
 void emu_task(void* arg)
 {
   printf("emu_task on core %d\n", xPortGetCoreID());
   uint32_t cpu_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ;
-  //_emu = NewNsfplayer(VIDEO_STANDARD);       // create the emulator!
   apuif_init();
   
-  //printf("emu_task %s running on core %d at %lu MHz\n",_emu->name.c_str(), xPortGetCoreID(), cpu_freq_mhz);
   printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
-
-  //mount_filesystem();                       // mount the filesystem!
-
-  // std::string rom_file = "/audio/nsf/test.nsf";
-  // if (_emu->insert(rom_file.c_str(),0,0) != 0) {
-  //     printf("Failed to load ROM, suspending emu_task\n");
-  //     vTaskSuspend(NULL);  // Suspend this task to prevent crashes
-  //     return;
-  // }
-
-  //video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
-  video_init(4,2,NULL,1); // start the A/V pump
 
   // 乱数シードの初期化
   srand(esp_timer_get_time());
 
+  mount_filesystem();                       // mount the filesystem!
+
+  int file_size = 0;
+  const char* filename = "/audio/nsf/test.nsf";
+  _input_data = load_file_from_spiffs(filename, &file_size);
+  printf("file(%s) is loaded(%d)\n", filename, file_size);
+
+  //video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
+  video_init(4,2,NULL,1); // start the A/V pump
+
   // 60Hz timing constants
   const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
-  //const uint64_t target_frame_time_us = 16639;  // 60.0988Hz = 16.639ms
   uint64_t next_frame_time = esp_timer_get_time();
   uint32_t frame_count = 0;
   uint32_t total_processing_time = 0;
@@ -159,12 +175,8 @@ void emu_task(void* arg)
   while(true) //emu loop
   {
     uint64_t frame_start = esp_timer_get_time();
-    
-    //printf("======== 60Hz Loop =========\n");
-    // NSF audio processing
     update_audio();
-    //printf("audio update done\n");
-
+  
     uint32_t buffer_used = _audio_w - _audio_r;
     uint32_t buffer_free = sizeof(_audio_buffer) - buffer_used;
 
