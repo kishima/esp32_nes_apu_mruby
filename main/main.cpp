@@ -43,54 +43,133 @@ extern "C" {
 #include "emu.h"
 #include "video_out.h"
 
-int _sample_count = -1;
-uint8_t* _input_data;
-
 #define NTSC_SAMPLE 262
+
+int _sample_count = -1;
+static uint8_t* _input_data;
+
+static apu_log_header_t _apulog_header;
+static apu_log_entry_t* _apulog_entries;
+static int _apu_init = 0;
+static int _frame_count = 0;
+static int _entry_count = 0;
+static int _play_head = 0;
+
+int exec_seek_play_head(){
+  for (uint32_t i = 0; i < _apulog_header.entry_count; i++) {
+    const apu_log_entry_t* entry = &_apulog_entries[i];
+    if(entry->event_type == APU_EVENT_INIT_END){
+      return i+1;
+    }
+  }
+  return -1;
+}
+
+void exec_init_entries(){
+  _play_head = exec_seek_play_head();
+  if(_play_head < 0){
+    printf("PLAY entry not found\n");
+    return;
+  }
+  for (uint32_t i = 0; i < _play_head; i++) {
+    const apu_log_entry_t* entry = &_apulog_entries[i];
+    if(!entry) return;
+    switch (entry->event_type) {
+      case APU_EVENT_WRITE:
+        apuif_write_reg(entry->addr, entry->data);
+        _frame_count = entry->frame_number;
+        //printf("%8lu 0x%04X 0x%02X\n",i , entry->addr, entry->data);
+        break;
+      case APU_EVENT_INIT_START:
+      case APU_EVENT_INIT_END:
+      case APU_EVENT_PLAY_START:
+      case APU_EVENT_PLAY_END:
+      default:
+        break;
+    }
+  }
+  _entry_count = _play_head;
+}
+
+void exec_play_entries(){
+  //printf("start entry_count=%d\n",_entry_count);
+  for (uint32_t i = _entry_count + 1; i < _apulog_header.entry_count ; i++) {
+    const apu_log_entry_t* entry = &_apulog_entries[i];
+    if(!entry) return;
+    switch (entry->event_type) {
+      case APU_EVENT_WRITE:
+        apuif_write_reg(entry->addr, entry->data);
+        //printf("%8lu 0x%04X 0x%02X %8lu\n",i , entry->addr, entry->data, entry->frame_number);
+        break;
+      case APU_EVENT_PLAY_START:
+        _entry_count = i;
+        //printf("end entry_count=%d\n",_entry_count);
+        return;
+        break;
+      case APU_EVENT_PLAY_END:
+        _entry_count = i+1;
+        //printf("end entry_count=%d\n",_entry_count);
+        return;
+        break;
+      case APU_EVENT_INIT_START:
+      case APU_EVENT_INIT_END:
+      default:
+        printf("unexpected event %d\n",entry->event_type);
+        break;
+    }
+  }
+  //loop
+  _entry_count = _play_head;
+}
 
 void update_audio()
 {
-   //_emu->update();  // PLAYルーチンを実行
+  if(!_apu_init){
+    exec_init_entries();
+    _apu_init = 1;
+  }
 
-    int16_t abuffer[(NTSC_SAMPLE+1)*2];
-    memset(abuffer,0,sizeof(abuffer));
-    _sample_count = apuif_frame_sample_count();
-    
-    // サンプル数の検証
-    if (_sample_count <= 0 || _sample_count > (NTSC_SAMPLE+1)*2) {
-        printf("[AUDIO_ERROR] Invalid sample count: %d\n", _sample_count);
-        return;
-    }
-    
+  exec_play_entries();
+
+  int16_t abuffer[(NTSC_SAMPLE+1)*2];
+  memset(abuffer,0,sizeof(abuffer));
+  _sample_count = apuif_frame_sample_count();
+  
+  // サンプル数の検証
+  if (_sample_count <= 0 || _sample_count > (NTSC_SAMPLE+1)*2) {
+    printf("[AUDIO_ERROR] Invalid sample count: %d\n", _sample_count);
+    return;
+  }
+  
 #if 0
-    // ランダムなテスト音波形を生成
-    for (int i = 0; i < _sample_count; i++) {
-        // -10000 から 10000 の範囲でランダムな値を生成
-        abuffer[i] = (rand() % 20001) - 10000;
-    }
+  // ランダムなテスト音波形を生成
+  for (int i = 0; i < _sample_count; i++) {
+      // -10000 から 10000 の範囲でランダムな値を生成
+      abuffer[i] = (rand() % 20001) - 10000;
+  }
 #else
-    _sample_count = apuif_process(abuffer,sizeof(abuffer));
+  _sample_count = apuif_process(abuffer,sizeof(abuffer));
 #endif
-    
+  
   if (AUDIO_DEBUG) {
-      // オーディオデバッグ：60フレームごとにチェック
-      static uint32_t audio_frame_count = 0;
-      if (audio_frame_count % 60 == 0) {
-          // サンプル数と最初のいくつかのサンプル値を表示
-          printf("AUDIO[%lu]: samples=%d\n", audio_frame_count, _sample_count);
-          
-          if (_sample_count > 0) {
-              printf("AUDIO: first 8 samples: ");
-              for (int i = 0; i < 8 && i < _sample_count; i++) {
-                  printf("0x%04X ", (uint16_t)abuffer[i]);
-              }
-              printf("\n");
-          }
-      }
-      audio_frame_count++;
+    // オーディオデバッグ：60フレームごとにチェック
+    static uint32_t audio_frame_count = 0;
+    if (audio_frame_count % 60 == 0) {
+        // サンプル数と最初のいくつかのサンプル値を表示
+        printf("AUDIO[%lu]: samples=%d\n", audio_frame_count, _sample_count);
+        
+        if (_sample_count > 0) {
+            printf("AUDIO: first 8 samples: ");
+            for (int i = 0; i < 8 && i < _sample_count; i++) {
+                printf("0x%04X ", (uint16_t)abuffer[i]);
+            }
+            printf("\n");
+        }
+    }
+    audio_frame_count++;
   }
     
-  audio_write_16(abuffer,_sample_count,1);  // 強制的にモノラル(1チャンネル)に設定
+  audio_write_16(abuffer,_sample_count,1);
 }
 
 esp_err_t mount_filesystem()
@@ -149,7 +228,6 @@ void emu_task(void* arg)
   printf("emu_task on core %d\n", xPortGetCoreID());
   uint32_t cpu_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ;
   apuif_init();
-  
   printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
 
   // 乱数シードの初期化
@@ -157,7 +235,7 @@ void emu_task(void* arg)
 
   mount_filesystem(); //mount the filesystem!
 
-  apuif_parse_apu_log("/audio/nsf_local/apu_log_track0.bin");
+  _apulog_entries = apuif_read_entries("/audio/nsf_local/apu_log_track0.bin", &_apulog_header);
 
   int file_size = 0;
   const char* filename = "/audio/nsf/test.nsf";

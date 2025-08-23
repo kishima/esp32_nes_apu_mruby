@@ -77,61 +77,67 @@ static const char* get_register_name(uint16_t addr) {
     return "Unknown";
 }
 
-int apuif_parse_apu_log(const char* filename) {
+apu_log_entry_t* apuif_read_entries(const char* filename, apu_log_header_t* header){
     FILE* file = fopen(filename, "rb");
     if (!file) {
         fprintf(stderr, "Error: Cannot open file '%s'\n", filename);
-        return false;
+        return NULL;
     }
     
     /* Read header */
-    apu_log_header_t header;
-    if (fread(&header, sizeof(header), 1, file) != 1) {
+    if (fread(header, sizeof(apu_log_header_t), 1, file) != 1) {
         fprintf(stderr, "Error: Failed to read header\n");
         fclose(file);
-        return false;
+        return NULL;
     }
     
     /* Verify magic */
-    if (memcmp(header.magic, "APULOG\0\0", 8) != 0) {
+    if (memcmp(header->magic, "APULOG\0\0", 8) != 0) {
         fprintf(stderr, "Error: Invalid file format (bad magic)\n");
         fclose(file);
-        return false;
+        return NULL;
     }
     
     printf("=== APU Binary Log File ===\n");
     printf("File: %s\n", filename);
-    printf("Format version: %u\n", header.version);
-    printf("Entry count: %u\n", header.entry_count);
-    printf("Frame count: %u\n", header.frame_count);
+    printf("Format version: %u\n", header->version);
+    printf("Entry count: %u\n", header->entry_count);
+    printf("Frame count: %u\n", header->frame_count);
     printf("\n");
     
-    if (header.entry_count == 0) {
+    if (header->entry_count == 0) {
         printf("No entries in log file.\n");
         fclose(file);
-        return true;
+        return NULL;
     }
     
     /* Allocate memory for entries */
     //apu_log_entry_t* entries = malloc(header.entry_count * sizeof(apu_log_entry_t));
-    apu_log_entry_t* entries = (apu_log_entry_t*)heap_caps_malloc(header.entry_count * sizeof(apu_log_entry_t), MALLOC_CAP_SPIRAM);
+    apu_log_entry_t* entries = (apu_log_entry_t*)heap_caps_malloc(header->entry_count * sizeof(apu_log_entry_t), MALLOC_CAP_SPIRAM);
     if (!entries) {
         fprintf(stderr, "Error: Failed to allocate memory for entries\n");
         fclose(file);
-        return false;
+        return NULL;
     }
     
     /* Read entries */
-    size_t entries_read = fread(entries, sizeof(apu_log_entry_t), header.entry_count, file);
-    if (entries_read != header.entry_count) {
-        fprintf(stderr, "Error: Expected %u entries, read %zu\n", header.entry_count, entries_read);
+    size_t entries_read = fread(entries, sizeof(apu_log_entry_t), header->entry_count, file);
+    if (entries_read != header->entry_count) {
+        fprintf(stderr, "Error: Expected %u entries, read %zu\n", header->entry_count, entries_read);
         free(entries);
         fclose(file);
-        return false;
+        return NULL;
     }
     
     fclose(file);
-    
+    return entries;
+}
+
+int apuif_parse_apu_log(const char* filename) {
+    apu_log_header_t header;
+    apu_log_entry_t* entries = apuif_read_entries(filename, &header);
+    if(!entries) return -1;
+
     /* Display entries */
     bool in_init = false;
     bool in_play = false;

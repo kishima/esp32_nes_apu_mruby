@@ -33,6 +33,8 @@ typedef struct {
     uint32_t frame_number;
 } apu_log_entry_t;
 
+
+apu_log_entry_t* apuif_read_entries(const char* filename, apu_log_header_t* header);
 int apuif_parse_apu_log(const char* filename);
 
 void apuif_init();
