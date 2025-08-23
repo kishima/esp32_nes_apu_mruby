@@ -3,6 +3,8 @@
 #include "nes_apu.h"
 #include "esp_heap_caps.h"
 
+void audio_write_16(const int16_t* s, int len, int channels);
+
 extern "C" {
 
 #include <stdio.h>
@@ -233,5 +235,8 @@ int apuif_parse_apu_log(const char* filename) {
     return true;
 }
 
+void apuif_audio_write(const int16_t* s, int len, int channels){
+    audio_write_16(s, len, channels);
+}
 
 }

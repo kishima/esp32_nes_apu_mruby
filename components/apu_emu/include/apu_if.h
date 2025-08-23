@@ -33,7 +33,6 @@ typedef struct {
     uint32_t frame_number;
 } apu_log_entry_t;
 
-
 apu_log_entry_t* apuif_read_entries(const char* filename, apu_log_header_t* header);
 int apuif_parse_apu_log(const char* filename);
 
@@ -42,6 +41,8 @@ int apuif_frame_sample_count();
 int apuif_process(int16_t* buff, int len);
 void apuif_write_reg(uint32_t address, uint8_t value);
 uint8_t apuif_read_reg(uint32_t address);
+
+void apuif_audio_write(const int16_t* s, int len, int channels);
 
 #ifdef __cplusplus
 }

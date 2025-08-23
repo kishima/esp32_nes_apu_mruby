@@ -561,136 +561,136 @@ void pal_init()
     }
 }
 
-void IRAM_ATTR blit_pal(uint8_t* src, uint16_t* dst)
-{
-    uint32_t c,color;
-    bool even = _line_counter & 1;
-    const uint32_t* p = even ? _palette : _palette + 256;
-    int left = 0;
-    int right = 256;
-    uint8_t mask = 0xFF;
-    uint8_t c0,c1,c2,c3,c4;
-    uint8_t y1,y2,y3;
+// void IRAM_ATTR blit_pal(uint8_t* src, uint16_t* dst)
+// {
+//     uint32_t c,color;
+//     bool even = _line_counter & 1;
+//     const uint32_t* p = even ? _palette : _palette + 256;
+//     int left = 0;
+//     int right = 256;
+//     uint8_t mask = 0xFF;
+//     uint8_t c0,c1,c2,c3,c4;
+//     uint8_t y1,y2,y3;
 
-    switch (_machine) {
-        case EMU_ATARI:
-            // pal is 5/4 wider than ntsc to account for pal 288 color clocks per line vs 228 in ntsc
-            // so do an ugly stretch on pixels (actually luma) to accomodate -> 384 pixels are now 240 pal color clocks wide
-            left = 24;
-            right = 384-24; // only show center 336 pixels
-            dst += 40;
-            for (int i = left; i < right; i += 4) {
-                c = *((uint32_t*)(src+i));
+//     switch (_machine) {
+//         case EMU_ATARI:
+//             // pal is 5/4 wider than ntsc to account for pal 288 color clocks per line vs 228 in ntsc
+//             // so do an ugly stretch on pixels (actually luma) to accomodate -> 384 pixels are now 240 pal color clocks wide
+//             left = 24;
+//             right = 384-24; // only show center 336 pixels
+//             dst += 40;
+//             for (int i = left; i < right; i += 4) {
+//                 c = *((uint32_t*)(src+i));
 
-                // make 5 colors out of 4 by interpolating y: 0000 0111 1122 2223 3333
-                c0 = c;
-                c1 = c >> 8;
-                c3 = c >> 16;
-                c4 = c >> 24;
-                y1 = (((c1 & 0xF) << 1) + ((c0 + c1) & 0x1F) + 2) >> 2;    // (c0 & 0xF)*0.25 + (c1 & 0xF)*0.75;
-                y2 = ((c1 + c3 + 1) >> 1) & 0xF;                           // (c1 & 0xF)*0.50 + (c2 & 0xF)*0.50;
-                y3 = (((c3 & 0xF) << 1) + ((c3 + c4) & 0x1F) + 2) >> 2;    // (c2 & 0xF)*0.75 + (c3 & 0xF)*0.25;
-                c1 = (c1 & 0xF0) + y1;
-                c2 = (c1 & 0xF0) + y2;
-                c3 = (c3 & 0xF0) + y3;
+//                 // make 5 colors out of 4 by interpolating y: 0000 0111 1122 2223 3333
+//                 c0 = c;
+//                 c1 = c >> 8;
+//                 c3 = c >> 16;
+//                 c4 = c >> 24;
+//                 y1 = (((c1 & 0xF) << 1) + ((c0 + c1) & 0x1F) + 2) >> 2;    // (c0 & 0xF)*0.25 + (c1 & 0xF)*0.75;
+//                 y2 = ((c1 + c3 + 1) >> 1) & 0xF;                           // (c1 & 0xF)*0.50 + (c2 & 0xF)*0.50;
+//                 y3 = (((c3 & 0xF) << 1) + ((c3 + c4) & 0x1F) + 2) >> 2;    // (c2 & 0xF)*0.75 + (c3 & 0xF)*0.25;
+//                 c1 = (c1 & 0xF0) + y1;
+//                 c2 = (c1 & 0xF0) + y2;
+//                 c3 = (c3 & 0xF0) + y3;
 
-                color = p[c0];
-                dst[0^1] = P0;
-                dst[1^1] = P1;
-                color = p[c1];
-                dst[2^1] = P2;
-                dst[3^1] = P3;
-                color = p[c2];
-                dst[4^1] = P0;
-                dst[5^1] = P1;
-                color = p[c3];
-                dst[6^1] = P2;
-                dst[7^1] = P3;
-                color = p[c4];
-                dst[8^1] = P0;
-                dst[9^1] = P1;
+//                 color = p[c0];
+//                 dst[0^1] = P0;
+//                 dst[1^1] = P1;
+//                 color = p[c1];
+//                 dst[2^1] = P2;
+//                 dst[3^1] = P3;
+//                 color = p[c2];
+//                 dst[4^1] = P0;
+//                 dst[5^1] = P1;
+//                 color = p[c3];
+//                 dst[6^1] = P2;
+//                 dst[7^1] = P3;
+//                 color = p[c4];
+//                 dst[8^1] = P0;
+//                 dst[9^1] = P1;
 
-                i += 4;
-                c = *((uint32_t*)(src+i));
+//                 i += 4;
+//                 c = *((uint32_t*)(src+i));
                 
-                // make 5 colors out of 4 by interpolating y: 0000 0111 1122 2223 3333
-                c0 = c;
-                c1 = c >> 8;
-                c3 = c >> 16;
-                c4 = c >> 24;
-                y1 = (((c1 & 0xF) << 1) + ((c0 + c1) & 0x1F) + 2) >> 2;    // (c0 & 0xF)*0.25 + (c1 & 0xF)*0.75;
-                y2 = ((c1 + c3 + 1) >> 1) & 0xF;                           // (c1 & 0xF)*0.50 + (c2 & 0xF)*0.50;
-                y3 = (((c3 & 0xF) << 1) + ((c3 + c4) & 0x1F) + 2) >> 2;    // (c2 & 0xF)*0.75 + (c3 & 0xF)*0.25;
-                c1 = (c1 & 0xF0) + y1;
-                c2 = (c1 & 0xF0) + y2;
-                c3 = (c3 & 0xF0) + y3;
+//                 // make 5 colors out of 4 by interpolating y: 0000 0111 1122 2223 3333
+//                 c0 = c;
+//                 c1 = c >> 8;
+//                 c3 = c >> 16;
+//                 c4 = c >> 24;
+//                 y1 = (((c1 & 0xF) << 1) + ((c0 + c1) & 0x1F) + 2) >> 2;    // (c0 & 0xF)*0.25 + (c1 & 0xF)*0.75;
+//                 y2 = ((c1 + c3 + 1) >> 1) & 0xF;                           // (c1 & 0xF)*0.50 + (c2 & 0xF)*0.50;
+//                 y3 = (((c3 & 0xF) << 1) + ((c3 + c4) & 0x1F) + 2) >> 2;    // (c2 & 0xF)*0.75 + (c3 & 0xF)*0.25;
+//                 c1 = (c1 & 0xF0) + y1;
+//                 c2 = (c1 & 0xF0) + y2;
+//                 c3 = (c3 & 0xF0) + y3;
 
-                color = p[c0];
-                dst[10^1] = P2;
-                dst[11^1] = P3;
-                color = p[c1];
-                dst[12^1] = P0;
-                dst[13^1] = P1;
-                color = p[c2];
-                dst[14^1] = P2;
-                dst[15^1] = P3;
-                color = p[c3];
-                dst[16^1] = P0;
-                dst[17^1] = P1;
-                color = p[c4];
-                dst[18^1] = P2;
-                dst[19^1] = P3;
-                dst += 20;
-            }
-            return;
+//                 color = p[c0];
+//                 dst[10^1] = P2;
+//                 dst[11^1] = P3;
+//                 color = p[c1];
+//                 dst[12^1] = P0;
+//                 dst[13^1] = P1;
+//                 color = p[c2];
+//                 dst[14^1] = P2;
+//                 dst[15^1] = P3;
+//                 color = p[c3];
+//                 dst[16^1] = P0;
+//                 dst[17^1] = P1;
+//                 color = p[c4];
+//                 dst[18^1] = P2;
+//                 dst[19^1] = P3;
+//                 dst += 20;
+//             }
+//             return;
 
-        case EMU_NES:
-            // 192 of 288 color clocks wide: roughly correct aspect ratio
-            mask = 0x3F;
-            if (!even)
-              p = _palette + 64;
-            dst += 88;
-            break;
+//         case EMU_NES:
+//             // 192 of 288 color clocks wide: roughly correct aspect ratio
+//             mask = 0x3F;
+//             if (!even)
+//               p = _palette + 64;
+//             dst += 88;
+//             break;
           
-        case EMU_SMS:
-            // 192 of 288 color clocks wide: roughly correct aspect ratio
-            dst += 88;
-            break;
-    }
+//         case EMU_SMS:
+//             // 192 of 288 color clocks wide: roughly correct aspect ratio
+//             dst += 88;
+//             break;
+//     }
 
-    // 4 pixels over 3 color clocks, 12 samples
-    // do the blitting
-    for (int i = left; i < right; i += 4) {
-        c = *((uint32_t*)(src+i));
-        color = p[c & mask];
-        dst[0^1] = P0;
-        dst[1^1] = P1;
-        dst[2^1] = P2;
-        color = p[(c >> 8) & mask];
-        dst[3^1] = P3;
-        dst[4^1] = P0;
-        dst[5^1] = P1;
-        color = p[(c >> 16) & mask];
-        dst[6^1] = P2;
-        dst[7^1] = P3;
-        dst[8^1] = P0;
-        color = p[(c >> 24) & mask];
-        dst[9^1] = P1;
-        dst[10^1] = P2;
-        dst[11^1] = P3;
-        dst += 12;
-    }
-}
+//     // 4 pixels over 3 color clocks, 12 samples
+//     // do the blitting
+//     for (int i = left; i < right; i += 4) {
+//         c = *((uint32_t*)(src+i));
+//         color = p[c & mask];
+//         dst[0^1] = P0;
+//         dst[1^1] = P1;
+//         dst[2^1] = P2;
+//         color = p[(c >> 8) & mask];
+//         dst[3^1] = P3;
+//         dst[4^1] = P0;
+//         dst[5^1] = P1;
+//         color = p[(c >> 16) & mask];
+//         dst[6^1] = P2;
+//         dst[7^1] = P3;
+//         dst[8^1] = P0;
+//         color = p[(c >> 24) & mask];
+//         dst[9^1] = P1;
+//         dst[10^1] = P2;
+//         dst[11^1] = P3;
+//         dst += 12;
+//     }
+// }
 
-void IRAM_ATTR burst_pal(uint16_t* line)
-{
-    line += _burst_start;
-    int16_t* b = (_line_counter & 1) ? _burst0 : _burst1;
-    for (int i = 0; i < _burst_width; i += 2) {
-        line[i^1] = b[i];
-        line[(i+1)^1] = b[i+1];
-    }
-}
+// void IRAM_ATTR burst_pal(uint16_t* line)
+// {
+//     line += _burst_start;
+//     int16_t* b = (_line_counter & 1) ? _burst0 : _burst1;
+//     for (int i = 0; i < _burst_width; i += 2) {
+//         line[i^1] = b[i];
+//         line[(i+1)^1] = b[i+1];
+//     }
+// }
 
 //===================================================================================================
 //===================================================================================================
@@ -905,39 +905,39 @@ void audio_write_16(const int16_t* s, int len, int channels)
 }
 
 // test pattern, must be ram
-uint8_t _sin64[64] = {
-    0x20,0x22,0x25,0x28,0x2B,0x2E,0x30,0x33,
-    0x35,0x37,0x38,0x3A,0x3B,0x3C,0x3D,0x3D,
-    0x3D,0x3D,0x3D,0x3C,0x3B,0x3A,0x38,0x37,
-    0x35,0x33,0x30,0x2E,0x2B,0x28,0x25,0x22,
-    0x20,0x1D,0x1A,0x17,0x14,0x11,0x0F,0x0C,
-    0x0A,0x08,0x07,0x05,0x04,0x03,0x02,0x02,
-    0x02,0x02,0x02,0x03,0x04,0x05,0x07,0x08,
-    0x0A,0x0C,0x0F,0x11,0x14,0x17,0x1A,0x1D,
-};
+// uint8_t _sin64[64] = {
+//     0x20,0x22,0x25,0x28,0x2B,0x2E,0x30,0x33,
+//     0x35,0x37,0x38,0x3A,0x3B,0x3C,0x3D,0x3D,
+//     0x3D,0x3D,0x3D,0x3C,0x3B,0x3A,0x38,0x37,
+//     0x35,0x33,0x30,0x2E,0x2B,0x28,0x25,0x22,
+//     0x20,0x1D,0x1A,0x17,0x14,0x11,0x0F,0x0C,
+//     0x0A,0x08,0x07,0x05,0x04,0x03,0x02,0x02,
+//     0x02,0x02,0x02,0x03,0x04,0x05,0x07,0x08,
+//     0x0A,0x0C,0x0F,0x11,0x14,0x17,0x1A,0x1D,
+// };
 uint8_t _x;
 
 // test the fancy DAC
 void IRAM_ATTR test_wave(volatile void* vbuf, int t = 1)
 {
-    uint16_t* buf = (uint16_t*)vbuf;
-    int n = _line_width;
-    switch (t) {
-        case 0: // f/64 sinewave
-            for (int i = 0; i < n; i += 2) {
-                buf[0^1] = GRAY_LEVEL + (_sin64[_x++ & 0x3F] << 8);
-                buf[1^1] = GRAY_LEVEL + (_sin64[_x++ & 0x3F] << 8);
-                buf += 2;
-            }
-            break;
-        case 1: // fast square wave
-            for (int i = 0; i < n; i += 2) {
-                buf[0^1] = GRAY_LEVEL - (0x10 << 8);
-                buf[1^1] = GRAY_LEVEL + (0x10 << 8);
-                buf += 2;
-            }
-            break;
-    }
+    // uint16_t* buf = (uint16_t*)vbuf;
+    // int n = _line_width;
+    // switch (t) {
+    //     case 0: // f/64 sinewave
+    //         for (int i = 0; i < n; i += 2) {
+    //             buf[0^1] = GRAY_LEVEL + (_sin64[_x++ & 0x3F] << 8);
+    //             buf[1^1] = GRAY_LEVEL + (_sin64[_x++ & 0x3F] << 8);
+    //             buf += 2;
+    //         }
+    //         break;
+    //     case 1: // fast square wave
+    //         for (int i = 0; i < n; i += 2) {
+    //             buf[0^1] = GRAY_LEVEL - (0x10 << 8);
+    //             buf[1^1] = GRAY_LEVEL + (0x10 << 8);
+    //             buf += 2;
+    //         }
+    //         break;
+    // }
 }
 
 // Wait for blanking before starting drawing
