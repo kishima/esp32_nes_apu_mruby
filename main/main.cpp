@@ -31,6 +31,10 @@ extern "C" {
 #include "nofrendo/nes_apu.h"
 #include "picoruby-esp32.h"
 #include "apu_if.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+
 }
 
 // デバッグログ制御フラグ
@@ -41,8 +45,6 @@ extern "C" {
 
 int _sample_count = -1;
 uint8_t* _input_data;
-
-using namespace std;
 
 #define NTSC_SAMPLE 262
 
@@ -67,7 +69,6 @@ void update_audio()
         abuffer[i] = (rand() % 20001) - 10000;
     }
 #else
-    //_sample_count = _emu->audio_buffer(abuffer,sizeof(abuffer));
     _sample_count = apuif_process(abuffer,sizeof(abuffer));
 #endif
     
@@ -154,7 +155,9 @@ void emu_task(void* arg)
   // 乱数シードの初期化
   srand(esp_timer_get_time());
 
-  mount_filesystem();                       // mount the filesystem!
+  mount_filesystem(); //mount the filesystem!
+
+  apuif_parse_apu_log("/audio/nsf_local/apu_log_track0.bin");
 
   int file_size = 0;
   const char* filename = "/audio/nsf/test.nsf";
