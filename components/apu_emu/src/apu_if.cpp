@@ -33,13 +33,76 @@ static uint8_t last_s __attribute__((section(".noinit")));
 #ifdef USE_I2S
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
 
-void apuif_hw_init_i2c(){
+static i2s_chan_handle_t i2s_tx_handle = NULL;
 
+void apuif_hw_init_i2s(){
+    printf("Use I2S for audio output\n");
+    
+    // I2S channel configuration
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    chan_cfg.auto_clear = true;
+    
+    // Create I2S TX channel
+    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &i2s_tx_handle, NULL));
+    
+    // I2S standard configuration
+    i2s_std_config_t std_cfg = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(15720), // NTSC sample rate
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+        .gpio_cfg = {
+            .mclk = I2S_GPIO_UNUSED, //3Line
+            .bclk = PIN_BCK,
+            .ws = PIN_WS,
+            .dout = PIN_DOUT,
+            .din = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv = false,
+            },
+        },
+    };
+    
+    // Initialize I2S with standard configuration
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_tx_handle, &std_cfg));
+    
+    // Enable I2S channel
+    ESP_ERROR_CHECK(i2s_channel_enable(i2s_tx_handle));
+    
+    printf("I2S initialized: BCK=%d, WS=%d, DOUT=%d, Sample Rate=15720Hz\n", 
+           PIN_BCK, PIN_WS, PIN_DOUT);
 }
 
-static void audio_write_i2s(){
-
+static void audio_write_i2s(const int16_t* samples, int len, int channels){
+    if (!i2s_tx_handle) {
+        printf("I2S not initialized\n");
+        return;
+    }
+    
+    size_t bytes_written = 0;
+    
+    if (channels == 1) {
+        // モノラル: そのまま送信
+        esp_err_t ret = i2s_channel_write(i2s_tx_handle, samples, len * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+        if (ret != ESP_OK) {
+            printf("I2S write error: %d\n", ret);
+        }
+    } else if (channels == 2) {
+        // ステレオ: 左右チャンネルの平均を取ってモノラルに変換
+        int16_t* mono_buffer = (int16_t*)malloc(len * sizeof(int16_t));
+        if (mono_buffer) {
+            for (int i = 0; i < len; i++) {
+                mono_buffer[i] = (samples[i*2] + samples[i*2+1]) / 2;
+            }
+            esp_err_t ret = i2s_channel_write(i2s_tx_handle, mono_buffer, len * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+            if (ret != ESP_OK) {
+                printf("I2S write error: %d\n", ret);
+            }
+            free(mono_buffer);
+        }
+    }
 }
 
 #else
@@ -234,11 +297,11 @@ uint8_t apuif_read_reg(uint32_t address)
 
 void apuif_audio_write(const int16_t* s, int len, int channels){
 #ifdef USE_I2S
-    //TODO: impl audio buffer set to I2S DMA buffer
-    audio_write_i2s();
+    audio_write_i2s(s, len, channels);
 #else
     audio_write_16(s, len, channels);
 #endif
+}
 
 
 static const char* get_register_name(uint16_t addr) {
@@ -411,8 +474,6 @@ int apuif_parse_apu_log(const char* filename) {
     
     free(entries);
     return true;
-}
-
 }
 
 }
