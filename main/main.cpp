@@ -178,7 +178,10 @@ void emu_task(void* arg)
 {
   printf("emu_task on core %d\n", xPortGetCoreID());
   uint32_t cpu_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ;
+
+  //APU and Audio output HW init
   apuif_init();
+
   printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
 
   //GPIO setting for M5StickC Plus2
@@ -195,9 +198,6 @@ void emu_task(void* arg)
   _apulog_entries = apuif_read_entries(DEMO_BIN_FILE, &_apulog_header);
 
 #endif
-  //video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
-  //video_init(4,2,NULL,1); // start the A/V pump
-  apuif_hw_init_ledc();
 
   // 60Hz timing constants
   const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms

@@ -3,17 +3,12 @@
 #include "nes_apu.h"
 #include "esp_heap_caps.h"
 
-#include "soc/ledc_struct.h"
-#include "driver/ledc.h"
-#include "driver/gpio.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/io_mux_reg.h"
 #include "rom/gpio.h"
 #include "rom/lldesc.h"
 #include "driver/periph_ctrl.h"
 #include "driver/dac.h"
-#include "driver/gpio.h"
-#include "driver/i2s.h"
 #include "driver/gptimer.h"
 
 extern "C" {
@@ -39,21 +34,18 @@ static uint8_t last_s __attribute__((section(".noinit")));
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
 
-#define PIN_BCK   GPIO_NUM_26
-#define PIN_WS    GPIO_NUM_25
-#define PIN_DOUT  GPIO_NUM_33
-
 void apuif_hw_init_i2c(){
 
 }
 
-void apuif_i2s_write_16(){
+static void audio_write_i2s(){
 
 }
 
 #else
+#include "soc/ledc_struct.h"
+#include "driver/ledc.h"
 
-#define AUDIO_PIN   26
 gptimer_handle_t _audio_timer = NULL;
 
 inline void IRAM_ATTR audio_sample(uint8_t s)
@@ -184,11 +176,24 @@ void audio_write_16(const int16_t* s, int len, int channels)
 void apuif_init(){
     if(_initialized) return;
 
+#ifdef USE_I2S
+    apuif_hw_init_i2s();
+    //can be change value according to I2S setting.
     _audio_frequency = 15720; //NTSC
     _audio_frame_samples = (_audio_frequency << 16)/60;   // fixed point sampler
     _audio_fraction = 0;
 
     _apu = apu_create(0, _audio_frequency, 60, 8);
+
+#else
+    apuif_hw_init_ledc();
+    _audio_frequency = 15720; //NTSC
+    _audio_frame_samples = (_audio_frequency << 16)/60;   // fixed point sampler
+    _audio_fraction = 0;
+
+    _apu = apu_create(0, _audio_frequency, 60, 8);
+
+#endif
     _initialized = 1;
 }
 
@@ -225,6 +230,16 @@ uint8_t apuif_read_reg(uint32_t address)
 {
     return apu_read(address);
 }
+
+
+void apuif_audio_write(const int16_t* s, int len, int channels){
+#ifdef USE_I2S
+    //TODO: impl audio buffer set to I2S DMA buffer
+    audio_write_i2s();
+#else
+    audio_write_16(s, len, channels);
+#endif
+
 
 static const char* get_register_name(uint16_t addr) {
     static const char* reg_names[] = {
@@ -398,8 +413,6 @@ int apuif_parse_apu_log(const char* filename) {
     return true;
 }
 
-void apuif_audio_write(const int16_t* s, int len, int channels){
-    audio_write_16(s, len, channels);
 }
 
 }

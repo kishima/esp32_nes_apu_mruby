@@ -6,7 +6,15 @@ extern "C" {
 #endif
 #include <stdint.h>
 
-//#define USE_I2S
+#define USE_I2S
+
+#ifdef USE_I2S
+#define PIN_BCK   GPIO_NUM_26
+#define PIN_WS    GPIO_NUM_25
+#define PIN_DOUT  GPIO_NUM_33
+#else
+#define AUDIO_PIN   26
+#endif
 
 /* APU event types */
 typedef enum {
@@ -45,13 +53,6 @@ void apuif_write_reg(uint32_t address, uint8_t value);
 uint8_t apuif_read_reg(uint32_t address);
 
 void apuif_audio_write(const int16_t* s, int len, int channels);
-
-//--------------------
-#ifdef USE_I2S
-void apuif_hw_init_i2s();
-#else
-void apuif_hw_init_ledc();
-#endif
 
 #ifdef __cplusplus
 }
