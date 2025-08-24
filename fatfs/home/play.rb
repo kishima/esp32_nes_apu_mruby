@@ -142,7 +142,8 @@ begin
     
 rescue => e
     puts "Error: #{e}"
-    puts e.backtrace.join("\n")
+    # backtrace is not available in PicoRuby
+    puts "Error occurred during APU log loading"
 end
 
 # NES APU Player
@@ -247,5 +248,6 @@ begin
     
 rescue => e
     puts "Error: #{e}"
-    puts e.backtrace.join("\n")
+    # backtrace is not available in PicoRuby
+    puts "Error occurred during APU log loading"
 end
