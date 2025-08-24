@@ -24,7 +24,7 @@ extern "C" {
 
 // デバッグログ制御フラグ
 // #define AUDIO_DEBUG
-#define REPLAY_TEST
+//#define REPLAY_TEST
 //#define DEMO_BIN_FILE "/audio/nsf_local/BotB_50518.bin"
 //#define DEMO_BIN_FILE "/audio/nsf_local/dq.bin"
 #define DEMO_BIN_FILE "/audio/nsf_local/Solstice_60.bin"
@@ -212,25 +212,6 @@ void emu_task(void* arg)
   {
     uint64_t frame_start = esp_timer_get_time();
     update_audio();
-  
-    // uint32_t buffer_used = _audio_w - _audio_r;
-    // uint32_t buffer_free = sizeof(_audio_buffer) - buffer_used;
-
-    // Audio buffer 詳細ログ (5秒間隔)
-    #if 0
-    static uint32_t detailed_log_frame = 0;
-    if (detailed_log_frame % 300 == 0) {
-        printf("RING_BUFFER[%lu]: w=%lu r=%lu used=%lu free=%lu\n", 
-                detailed_log_frame, _audio_w & 1023, _audio_r & 1023, buffer_used, buffer_free);
-    }
-    detailed_log_frame++;
-    #endif
-
-    // Audio buffer 警告
-#ifdef AUDIO_DEBUG
-    if (buffer_used < 100) printf("underflow %ld\n", buffer_used);
-    if (buffer_used > 900) printf("overflow %ld\n", buffer_used);
-#endif
 
     uint64_t frame_end = esp_timer_get_time();
     uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);
