@@ -39,7 +39,10 @@ extern "C" {
 
 // デバッグログ制御フラグ
 // #define AUDIO_DEBUG
-// #define REPLAY_TEST
+#define REPLAY_TEST
+#define DEMO_BIN_FILE "/audio/nsf_local/BotB_50518.bin"
+//#define DEMO_BIN_FILE "/audio/nsf_local/dq.bin"
+
 
 #include "emu.h"
 #include "video_out.h"
@@ -191,39 +194,6 @@ esp_err_t mount_filesystem()
   return e;
 }
 
-uint8_t* load_file_from_spiffs(const char* filename, int* size) {
-    FILE* file = fopen(filename, "rb");
-    if (!file) {
-        printf("Failed to open file: %s\n", filename);
-        return nullptr;
-    }
-
-    // Get file size
-    fseek(file, 0, SEEK_END);
-    *size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    // Allocate memory and read file
-    uint8_t* file_data = (uint8_t*)malloc(*size);
-    if (!file_data) {
-        printf("Failed to allocate memory for the file\n");
-        fclose(file);
-        return nullptr;
-    }
-
-    size_t read_bytes = fread(file_data, 1, *size, file);
-    fclose(file);
-
-    if (read_bytes != *size) {
-        printf("Failed to read complete file\n");
-        free(file_data);
-        return nullptr;
-    }
-
-    printf("Loaded file %s: %d bytes\n", filename, *size);
-    return file_data;
-}
-
 void emu_task(void* arg)
 {
   printf("emu_task on core %d\n", xPortGetCoreID());
@@ -235,9 +205,8 @@ void emu_task(void* arg)
   srand(esp_timer_get_time());
 
 #ifdef REPLAY_TEST
-  mount_filesystem(); //mount the filesystem!
-
-  _apulog_entries = apuif_read_entries("/audio/nsf_local/apu_log_track0.bin", &_apulog_header);
+  mount_filesystem(); //mount the filesystem!  
+  _apulog_entries = apuif_read_entries(DEMO_BIN_FILE, &_apulog_header);
 
 #endif
   //video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
@@ -318,8 +287,10 @@ extern "C" void app_main(void)
   
   while(true){
     //wait audio setup
+#ifndef REPLAY_TEST
     if(_audio_initialized) break;
-    vTaskDelay(1);
+#endif
+    vTaskDelay(10);
   }
   printf("emulator gets started. video_init done\n");
 

@@ -228,9 +228,6 @@ static int32 apu_rectangle_##ch(void) \
    if (apu.rectangle[ch].freq < 8 \
        || (false == apu.rectangle[ch].sweep_inc \
            && apu.rectangle[ch].freq > apu.rectangle[ch].freq_limit)) { \
-      if (debug_call_count_##ch < 10) { \
-         printf("PULSE%d: freq too low (%d) or too high, returning %d\n", ch+1, apu.rectangle[ch].freq, APU_RECTANGLE_OUTPUT(ch)); \
-      } \
       return APU_RECTANGLE_OUTPUT(ch); \
    } \
 \

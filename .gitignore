@@ -14,6 +14,6 @@ temp/
 nsf_player/*.o
 nsf_player/nsf_player
 nsf_player/log*
-fatfs/home/apu_log_track0.bin
+fatfs/home/*.bin
 
 
