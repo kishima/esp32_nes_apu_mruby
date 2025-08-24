@@ -6,6 +6,8 @@ extern "C" {
 #endif
 #include <stdint.h>
 
+//#define USE_I2S
+
 /* APU event types */
 typedef enum {
     APU_EVENT_WRITE = 0,
@@ -43,6 +45,13 @@ void apuif_write_reg(uint32_t address, uint8_t value);
 uint8_t apuif_read_reg(uint32_t address);
 
 void apuif_audio_write(const int16_t* s, int len, int channels);
+
+//--------------------
+#ifdef USE_I2S
+void apuif_hw_init_i2s();
+#else
+void apuif_hw_init_ledc();
+#endif
 
 #ifdef __cplusplus
 }

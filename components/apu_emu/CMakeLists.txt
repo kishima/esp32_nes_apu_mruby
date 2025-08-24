@@ -83,11 +83,6 @@ idf_component_register(
         "spi_flash"
 )
 
-# target_compile_definitions(${COMPONENT_LIB} PRIVATE
-#     -DNOFCONFIG_H
-#     -DNES_SMALL_STACK
-#     -DESPWIFI
-# )
 target_compile_options(__idf_apu_emu PRIVATE 
     -w  # Disable all warnings
     -Wno-error  # Don't treat warnings as errors

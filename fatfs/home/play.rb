@@ -1,5 +1,7 @@
 puts "NSF replay test"
 
+require "filesystem-fat"
+
 # APU Event Types
 APU_EVENT_WRITE = 0
 APU_EVENT_INIT_START = 1
@@ -15,7 +17,7 @@ class ApuRegLog
         @entries = []
         puts "loading... #{path}"
         
-        File.open(path, "rb") do |f|
+        File.open(path, "r") do |f|
             # Read header (32 bytes)
             magic = f.read(8)
             puts "magic: #{magic.inspect}"
@@ -126,7 +128,7 @@ end
 
 # Test loading
 begin
-    reg_log = ApuRegLog.new("/home/apu_log_track0.bin")
+    reg_log = ApuRegLog.new("/home/dq.bin")
     
     # Find INIT sequence
     init_seq = reg_log.find_init_sequence
@@ -231,7 +233,7 @@ end
 # Main execution
 begin
     # Load APU log
-    reg_log = ApuRegLog.new("/home/apu_log_track0.bin")
+    reg_log = ApuRegLog.new("/home/dq.bin")
     
     # Create APU I/F
     apu = NesApu.new()

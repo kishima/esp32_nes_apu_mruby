@@ -1,24 +1,9 @@
-/* Copyright (c) 2020, Peter Barrett
-**
-** Permission to use, copy, modify, and/or distribute this software for
-** any purpose with or without fee is hereby granted, provided that the
-** above copyright notice and this permission notice appear in all copies.
-**
-** THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
-** WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
-** WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR
-** BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
-** OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
-** WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
-** ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
-** SOFTWARE.
-*/
-
 #include "esp_system.h"
 #include "esp_spiffs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "driver/gpio.h"
 #include <stdio.h>
 #include <inttypes.h>
 #include <algorithm>
@@ -40,18 +25,15 @@ extern "C" {
 // デバッグログ制御フラグ
 // #define AUDIO_DEBUG
 #define REPLAY_TEST
-#define DEMO_BIN_FILE "/audio/nsf_local/BotB_50518.bin"
+//#define DEMO_BIN_FILE "/audio/nsf_local/BotB_50518.bin"
 //#define DEMO_BIN_FILE "/audio/nsf_local/dq.bin"
-
-
-#include "emu.h"
-#include "video_out.h"
+#define DEMO_BIN_FILE "/audio/nsf_local/Solstice_60.bin"
 
 #define NTSC_SAMPLE 262
 
 static volatile int _audio_initialized = 0;
 int _sample_count = -1;
-static uint8_t* _input_data;
+
 static apu_log_header_t _apulog_header;
 static apu_log_entry_t* _apulog_entries;
 static int _apu_init = 0;
@@ -173,24 +155,22 @@ void update_audio()
   }
   audio_frame_count++;
 #endif
-  audio_write_16(abuffer,_sample_count,1);
+  apuif_audio_write(abuffer,_sample_count,1);
 }
 
 esp_err_t mount_filesystem()
 {
-  printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
-  uint32_t t = esp_timer_get_time() / 1000;
   esp_vfs_spiffs_conf_t conf = {
     .base_path = "/audio",
     .partition_label = "audio",
     .max_files = 5,
-    .format_if_mount_failed = true  // force?
+    .format_if_mount_failed = true
   };
   esp_err_t e = esp_vfs_spiffs_register(&conf);
-  if (e != 0)
-    printf("Failed to mount or format filesystem: %d. Use 'ESP32 Sketch Data Upload' from 'Tools' menu\n",e);
+  if (e != 0){
+    printf("Failed to mount or format filesystem: %d.\n",e);
+  }
   vTaskDelay(1);
-  printf("... mounted in %" PRIu32 " ms\n", (uint32_t)(esp_timer_get_time() / 1000) - t);
   return e;
 }
 
@@ -201,6 +181,12 @@ void emu_task(void* arg)
   apuif_init();
   printf("CPU Frequency: %lu MHz\n", cpu_freq_mhz);
 
+  //GPIO setting for M5StickC Plus2
+  //disable G36
+  gpio_pulldown_dis(GPIO_NUM_36);
+  gpio_pullup_dis(GPIO_NUM_36);
+  gpio_set_direction(GPIO_NUM_36, GPIO_MODE_INPUT);  
+
   // 乱数シードの初期化
   srand(esp_timer_get_time());
 
@@ -210,7 +196,8 @@ void emu_task(void* arg)
 
 #endif
   //video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
-  video_init(4,2,NULL,1); // start the A/V pump
+  //video_init(4,2,NULL,1); // start the A/V pump
+  apuif_hw_init_ledc();
 
   // 60Hz timing constants
   const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
@@ -226,8 +213,8 @@ void emu_task(void* arg)
     uint64_t frame_start = esp_timer_get_time();
     update_audio();
   
-    uint32_t buffer_used = _audio_w - _audio_r;
-    uint32_t buffer_free = sizeof(_audio_buffer) - buffer_used;
+    // uint32_t buffer_used = _audio_w - _audio_r;
+    // uint32_t buffer_free = sizeof(_audio_buffer) - buffer_used;
 
     // Audio buffer 詳細ログ (5秒間隔)
     #if 0

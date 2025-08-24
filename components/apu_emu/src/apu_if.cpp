@@ -3,7 +3,18 @@
 #include "nes_apu.h"
 #include "esp_heap_caps.h"
 
-void audio_write_16(const int16_t* s, int len, int channels);
+#include "soc/ledc_struct.h"
+#include "driver/ledc.h"
+#include "driver/gpio.h"
+#include "soc/rtc_io_reg.h"
+#include "soc/io_mux_reg.h"
+#include "rom/gpio.h"
+#include "rom/lldesc.h"
+#include "driver/periph_ctrl.h"
+#include "driver/dac.h"
+#include "driver/gpio.h"
+#include "driver/i2s.h"
+#include "driver/gptimer.h"
 
 extern "C" {
 
@@ -17,6 +28,158 @@ static int _audio_frequency = 0;
 static int _audio_frame_samples = 0;
 static int _audio_fraction = 0;
 static int _initialized = 0;
+
+uint8_t _audio_buffer[1024] __attribute__((aligned(4)));
+uint32_t volatile _audio_r = 0;
+uint32_t volatile _audio_w = 0;
+
+static uint8_t last_s __attribute__((section(".noinit"))); 
+
+#ifdef USE_I2S
+#include "driver/i2s_std.h"
+#include "driver/gpio.h"
+
+#define PIN_BCK   GPIO_NUM_26
+#define PIN_WS    GPIO_NUM_25
+#define PIN_DOUT  GPIO_NUM_33
+
+void apuif_hw_init_i2c(){
+
+}
+
+void apuif_i2s_write_16(){
+
+}
+
+#else
+
+#define AUDIO_PIN   26
+gptimer_handle_t _audio_timer = NULL;
+
+inline void IRAM_ATTR audio_sample(uint8_t s)
+{
+    auto& reg = LEDC.channel_group[0].channel[0];
+    reg.duty.duty = s << 4; // 25 bit (21.4)
+    reg.conf0.sig_out_en = 1; // This is the output enable control bit for channel
+    reg.conf1.duty_start = 1; // When duty_num duty_cycle and duty_scale has been configured. these register won't take effect until set duty_start. this bit is automatically cleared by hardware
+    reg.conf0.clk_en = 1;
+}
+
+void IRAM_ATTR audio_isr()
+{
+    uint32_t r = _audio_r;   // ローカルに取り込み
+    uint32_t w = _audio_w;   // 1回だけ読む（スナップショット）
+
+    uint8_t s;
+    if(_audio_r < _audio_w){
+        s = _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)];
+        last_s = s;
+    }else{
+        s = last_s;
+    } 
+    audio_sample(s);
+
+}
+
+bool IRAM_ATTR audio_timer_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    audio_isr();
+    return false; // return false to indicate we're not yielding to a higher priority task
+}
+
+// Setup audio timer interrupt based on sample rate
+esp_err_t setup_audio_timer(float sample_rate_mhz)
+{
+    // Calculate timer period from sample rate
+    // sample_rate_mhz is in MHz, convert to microseconds
+    uint64_t timer_period_us = (uint64_t)(1.0 / sample_rate_mhz);
+
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000, // 1MHz resolution
+        .intr_priority = 0,
+        .flags = {
+            .intr_shared = 0
+        }
+    };
+    
+    esp_err_t ret = gptimer_new_timer(&timer_config, &_audio_timer);
+    if (ret != ESP_OK) return ret;
+
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = audio_timer_callback,
+    };
+    ret = gptimer_register_event_callbacks(_audio_timer, &cbs, NULL);
+    if (ret != ESP_OK) return ret;
+
+    gptimer_alarm_config_t alarm_config = {
+        .alarm_count = timer_period_us,
+        .reload_count = 0,
+        .flags = {
+            .auto_reload_on_alarm = 1,
+        }
+    };
+    ret = gptimer_set_alarm_action(_audio_timer, &alarm_config);
+    if (ret != ESP_OK) return ret;
+
+    ret = gptimer_enable(_audio_timer);
+    if (ret != ESP_OK) return ret;
+
+    return gptimer_start(_audio_timer);
+}
+
+void apuif_hw_init_ledc()
+{
+    // Use NTSC audio sample rate: ~15.7kHz
+    printf("Use Timer Interrupt for PWM audio\n");    
+    setup_audio_timer(0.0157); // 15.7kHz sample rate
+    
+    // ESP-IDF LEDC configuration for PWM audio (ESP-IDF v5.4 compatible)
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_HIGH_SPEED_MODE,
+        .duty_resolution  = LEDC_TIMER_7_BIT,
+        .timer_num        = LEDC_TIMER_0,
+        //.freq_hz          = 2000000,  // 2MHz PWM frequency
+        .freq_hz          = 625000,  // 625KHz PWM frequency // 625 khz is as fast as we go with 7 bitss
+        .clk_cfg          = LEDC_USE_APB_CLK
+    };
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num       = AUDIO_PIN,
+        .speed_mode     = LEDC_HIGH_SPEED_MODE,
+        .channel        = LEDC_CHANNEL_0,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .timer_sel      = LEDC_TIMER_0,
+        .duty           = 0,
+        .hpoint         = 0
+    };
+    ledc_channel_config(&ledc_channel);
+    
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+void audio_write_16(const int16_t* s, int len, int channels)
+{
+    int b;
+    while (len--) {
+        if (_audio_w == (_audio_r + sizeof(_audio_buffer))){
+            break;
+        }
+        if (channels == 2) {
+            b = (s[0] + s[1]) >> 9;
+            s += 2;
+        } else {
+            b = *s++ >> 8;
+        }
+        if (b < -32) b = -32;
+        if (b > 31) b = 31;
+        _audio_buffer[_audio_w++ & (sizeof(_audio_buffer)-1)] = b + 32;
+    }
+}
+#endif
 
 void apuif_init(){
     if(_initialized) return;
