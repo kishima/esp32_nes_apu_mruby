@@ -650,7 +650,7 @@ void apu_write(uint32 address, uint8 value)
    }
    
    // 特別なレジスタの場合は詳細情報を表示（チャンネル有効化は常に表示）
-   if (address == 0x4015) {
+   if (APU_WRITE_DEBUG && address == 0x4015) {
        printf("  -> CHANNEL ENABLE: Pulse1=%s, Pulse2=%s, Triangle=%s, Noise=%s, DMC=%s\n",
               (value & 0x01) ? "ON" : "OFF",
               (value & 0x02) ? "ON" : "OFF", 

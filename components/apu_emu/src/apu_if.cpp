@@ -36,6 +36,8 @@ static uint8_t last_s __attribute__((section(".noinit")));
 #include "freertos/FreeRTOS.h"
 
 static i2s_chan_handle_t i2s_tx_handle = NULL;
+static int16_t* stereo_buffer = NULL;
+static int stereo_buffer_size = 0;
 
 void apuif_hw_init_i2s(){
     printf("Use I2S for audio output\n");
@@ -71,8 +73,19 @@ void apuif_hw_init_i2s(){
     // Enable I2S channel
     ESP_ERROR_CHECK(i2s_channel_enable(i2s_tx_handle));
     
+    // Calculate and allocate stereo buffer for maximum frame size
+    // NTSC: ~15720 samples/sec / 60fps = ~262 samples/frame
+    // Add some margin for safety: 300 samples * 2 channels
+    stereo_buffer_size = 300 * 2; // 300 samples * 2 channels (stereo)
+    stereo_buffer = (int16_t*)malloc(stereo_buffer_size * sizeof(int16_t));
+    if (!stereo_buffer) {
+        printf("Failed to allocate stereo buffer\n");
+        return;
+    }
+    
     printf("I2S initialized: BCK=%d, WS=%d, DOUT=%d, Sample Rate=15720Hz\n", 
            PIN_BCK, PIN_WS, PIN_DOUT);
+    printf("Stereo buffer allocated: %d samples\n", stereo_buffer_size / 2);
 }
 
 static void audio_write_i2s(const int16_t* samples, int len, int channels){
@@ -81,21 +94,28 @@ static void audio_write_i2s(const int16_t* samples, int len, int channels){
         return;
     }
     
+    if (!stereo_buffer) {
+        printf("Stereo buffer not allocated\n");
+        return;
+    }
+    
     size_t bytes_written = 0;
     
     if (channels == 1) {
         // モノラル: 左右両方に同じデータを送信（ステレオ化）
-        int16_t* stereo_buffer = (int16_t*)malloc(len * 2 * sizeof(int16_t));
-        if (stereo_buffer) {
-            for (int i = 0; i < len; i++) {
-                stereo_buffer[i*2] = samples[i];     // Left channel
-                stereo_buffer[i*2+1] = samples[i];   // Right channel
-            }
-            esp_err_t ret = i2s_channel_write(i2s_tx_handle, stereo_buffer, len * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
-            if (ret != ESP_OK) {
-                printf("I2S write error: %d\n", ret);
-            }
-            free(stereo_buffer);
+        if (len * 2 > stereo_buffer_size) {
+            printf("Sample count too large: %d*2 > %d\n", len, stereo_buffer_size);
+            return;
+        }
+        
+        for (int i = 0; i < len; i++) {
+            stereo_buffer[i*2] = samples[i];     // Left channel
+            stereo_buffer[i*2+1] = samples[i];   // Right channel
+        }
+        
+        esp_err_t ret = i2s_channel_write(i2s_tx_handle, stereo_buffer, len * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+        if (ret != ESP_OK) {
+            printf("I2S write error: %d\n", ret);
         }
     } else if (channels == 2) {
         // ステレオ: そのまま送信
