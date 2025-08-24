@@ -50,7 +50,7 @@ void apuif_hw_init_i2s(){
     // I2S standard configuration
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(15720), // NTSC sample rate
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED, //3Line
             .bclk = PIN_BCK,
@@ -84,23 +84,24 @@ static void audio_write_i2s(const int16_t* samples, int len, int channels){
     size_t bytes_written = 0;
     
     if (channels == 1) {
-        // モノラル: そのまま送信
-        esp_err_t ret = i2s_channel_write(i2s_tx_handle, samples, len * sizeof(int16_t), &bytes_written, portMAX_DELAY);
-        if (ret != ESP_OK) {
-            printf("I2S write error: %d\n", ret);
-        }
-    } else if (channels == 2) {
-        // ステレオ: 左右チャンネルの平均を取ってモノラルに変換
-        int16_t* mono_buffer = (int16_t*)malloc(len * sizeof(int16_t));
-        if (mono_buffer) {
+        // モノラル: 左右両方に同じデータを送信（ステレオ化）
+        int16_t* stereo_buffer = (int16_t*)malloc(len * 2 * sizeof(int16_t));
+        if (stereo_buffer) {
             for (int i = 0; i < len; i++) {
-                mono_buffer[i] = (samples[i*2] + samples[i*2+1]) / 2;
+                stereo_buffer[i*2] = samples[i];     // Left channel
+                stereo_buffer[i*2+1] = samples[i];   // Right channel
             }
-            esp_err_t ret = i2s_channel_write(i2s_tx_handle, mono_buffer, len * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+            esp_err_t ret = i2s_channel_write(i2s_tx_handle, stereo_buffer, len * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
             if (ret != ESP_OK) {
                 printf("I2S write error: %d\n", ret);
             }
-            free(mono_buffer);
+            free(stereo_buffer);
+        }
+    } else if (channels == 2) {
+        // ステレオ: そのまま送信
+        esp_err_t ret = i2s_channel_write(i2s_tx_handle, samples, len * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+        if (ret != ESP_OK) {
+            printf("I2S write error: %d\n", ret);
         }
     }
 }
