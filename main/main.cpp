@@ -23,8 +23,9 @@ extern "C" {
 }
 
 // デバッグログ制御フラグ
-// #define AUDIO_DEBUG
 //#define REPLAY_TEST
+//#define AUDIO_DEBUG
+
 //#define DEMO_BIN_FILE "/audio/nsf_local/BotB_50518.bin"
 //#define DEMO_BIN_FILE "/audio/nsf_local/dq.bin"
 #define DEMO_BIN_FILE "/audio/nsf_local/Solstice_60.bin"

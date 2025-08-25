@@ -1,7 +1,7 @@
 puts "NSF replay test"
 
 require "filesystem-fat"
-require "nes_apu"
+require "nes-apu"
 require "machine"
 
 #   1. ヘッダー構造
@@ -83,7 +83,9 @@ class ApuRegLog
             @pos_init = 32;
 
             #check INIT frame
-            (@pos_init .. (@header[:entry_count]+1)*ApuRegLog::ENTRY_SIZE).step(ApuRegLog::ENTRY_SIZE).each do |pos|
+            puts "check INIT frame"
+            pos = @pos_init
+            while pos < (@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE
                 puts "check init frame pos=#{pos}"
                 entry = read_entry_all(f,pos)
                 if entry[:event_type] == ApuRegLog::APU_EVENT_WRITE || entry[:event_type] == ApuRegLog::APU_EVENT_INIT_START
@@ -99,6 +101,7 @@ class ApuRegLog
                     puts "unexpected type #{entry[:event_type] }"
                     break
                 end
+                pos += ApuRegLog::ENTRY_SIZE 
             end
             puts "@pos_play : #{@pos_play}"
         end #file close
@@ -158,7 +161,8 @@ class ApuRegLog
 
         is_write_fetched = false
 
-        @current_pos.step(ApuRegLog::ENTRY_SIZE) do |pos|
+        pos = @current_pos;
+        while pos < (@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE
             val = @file.read(4) # time is not used
             if val == nil #end
                 if @file.eof?
@@ -182,6 +186,8 @@ class ApuRegLog
                     break
                 end
             end
+            @file.read(4) #frame number not used
+            pos += ApuRegLog::ENTRY_SIZE
         end
     end
     
@@ -252,15 +258,19 @@ end
 # Main execution
 begin
     # Load NSF register control log file
+    puts "load reglog"
     reg_log = ApuRegLog.new("/home/dq.bin")
     
     # Create APU I/F
+    puts "create APU mod obj"
     apu = NesApu.new()
 
     # Create player
+    puts "create player"
     player = MusicPlayer.new(apu, reg_log)
     
     # Play music
+    puts "play music start"
     if player.play_init
         player.play_loop(60*60)
     end
