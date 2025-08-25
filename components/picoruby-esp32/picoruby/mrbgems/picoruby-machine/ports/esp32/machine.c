@@ -195,3 +195,9 @@ Machine_exit(int status)
 {
   (void)status; // no-op
 }
+
+int32_t
+Machine_get_hwcount(){
+  return (int32_t)(esp_timer_get_time() / 1000ULL);
+}
+

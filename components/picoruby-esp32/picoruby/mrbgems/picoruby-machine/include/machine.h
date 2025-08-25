@@ -36,6 +36,7 @@ const char* Machine_mcu_name(void);
 bool Machine_set_hwclock(const struct timespec *ts);
 bool Machine_get_hwclock(struct timespec *ts);
 void Machine_exit(int status);
+int32_t Machine_get_hwcount();
 
 #ifdef __cplusplus
 }
