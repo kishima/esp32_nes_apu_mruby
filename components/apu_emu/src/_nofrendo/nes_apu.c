@@ -27,7 +27,7 @@
 #include "noftypes.h"
 #include "log.h"
 #include "nes_apu.h"
-// #include "nes6502.h"
+#include "nes6502.h"
 #include "esp_timer.h"
 
 // APUデバッグログ制御フラグ
@@ -575,11 +575,10 @@ static int32 apu_dmc(void)
          
          if (7 == delta_bit)
          {
-            // DMC is not supported in standalone APU mode
-            apu.dmc.cur_byte = 0; // nes6502_getbyte(apu.dmc.address);
+            apu.dmc.cur_byte = nes6502_getbyte(apu.dmc.address);
             
             /* steal a cycle from CPU*/
-            // nes6502_burn(1);
+            nes6502_burn(1);
 
             /* prevent wraparound */
             if (0xFFFF == apu.dmc.address)
