@@ -194,18 +194,18 @@ void emu_task(void* arg)
   // 乱数シードの初期化
   srand(esp_timer_get_time());
 
-#ifdef REPLAY_TEST
-  mount_filesystem(); //mount the filesystem!  
-  _apulog_entries = apuif_read_entries(DEMO_BIN_FILE, &_apulog_header);
-
   // 60Hz timing constants
   const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
   uint64_t next_frame_time = esp_timer_get_time();
   uint32_t frame_count = 0;
   uint32_t total_processing_time = 0;
+
+#ifdef REPLAY_TEST
+  mount_filesystem(); //mount the filesystem!  
+  _apulog_entries = apuif_read_entries(DEMO_BIN_FILE, &_apulog_header);
   
   printf("Starting 60Hz NSF playback loop...\n");
-
+  next_frame_time = esp_timer_get_time();
   while(true) //emu loop
   {
     uint64_t frame_start = esp_timer_get_time();
@@ -249,8 +249,35 @@ void emu_task(void* arg)
   _audio_initialized = 1;
   while(true) //emu loop
   {
-    //audio process is handled by picoruby
-    vTaskDelay(pdMS_TO_TICKS(100));
+    if(apuif_use_external_process() == 0){
+      //audio process is handled by picoruby
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+    if(frame_count % 300 == 0){
+      printf("using external loop\n");
+    }
+
+    uint64_t frame_start = esp_timer_get_time();
+    update_audio();
+
+    uint64_t frame_end = esp_timer_get_time();
+    uint32_t processing_time_us = (uint32_t)(frame_end - frame_start);
+    total_processing_time += processing_time_us;
+    frame_count++;
+    
+    // Calculate next frame time
+    next_frame_time += target_frame_time_us;
+    
+    // Sleep until next frame
+    int64_t sleep_time_us = next_frame_time - frame_end;
+    
+    if (sleep_time_us > 1000) {
+      // Sleep if we have more than 1ms left
+      vTaskDelay(pdMS_TO_TICKS(sleep_time_us / 1000));
+    } else if (sleep_time_us < 0) {
+      next_frame_time = esp_timer_get_time();
+    }
   }
 #endif
 

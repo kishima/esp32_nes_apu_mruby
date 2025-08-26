@@ -206,7 +206,7 @@ class MusicPlayer
         true
     end
     
-    def play_loop(loop_flag)
+    def play_loop(loop_flag, process_flag)
         puts "\nStarting playback..."
         played_frame = 0
         frame_end = @score.header[:frame_count]
@@ -217,7 +217,7 @@ class MusicPlayer
             @score.pop_entries_from_frame do |addr,data| 
                 @sound_mod.write_reg(addr, data)
             end
-            @sound_mod.process
+            @sound_mod.process(process_flag)
         
             played_frame += 1
 
@@ -265,8 +265,10 @@ begin
     end
 
     loop_flag = false
+    process_flag = 0
     if ARGV.size == 2
         loop_flag = true if ARGV[1] == "loop"
+        process_flag = 1 if ARGV[1] == "external"
     end
 
     # Load NSF register control log file
@@ -284,9 +286,10 @@ begin
     # Play music
     #puts "play music start"
     player.play_init
-    player.play_loop(loop_flag)
+    player.play_loop(loop_flag, process_flag)
 
     # Stop audio
+    apu.process(0)
     apu.reset
 
     puts "play music done"

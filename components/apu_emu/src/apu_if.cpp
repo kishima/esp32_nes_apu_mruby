@@ -23,6 +23,7 @@ static int _audio_frequency = 0;
 static int _audio_frame_samples = 0;
 static int _audio_fraction = 0;
 static int _initialized = 0;
+static volatile int _use_external_process = 0;
 
 uint8_t _audio_buffer[1024] __attribute__((aligned(4)));
 uint32_t volatile _audio_r = 0;
@@ -322,6 +323,16 @@ void apuif_audio_write(const int16_t* s, int len, int channels){
 #else
     audio_write_16(s, len, channels);
 #endif
+}
+
+int apuif_use_external_process()
+{
+    return _use_external_process;
+}
+void apuif_set_external_process(int flag)
+{
+    //0 not use, 1 use
+    _use_external_process = flag;
 }
 
 

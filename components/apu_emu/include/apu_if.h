@@ -53,6 +53,8 @@ void apuif_write_reg(uint32_t address, uint8_t value);
 uint8_t apuif_read_reg(uint32_t address);
 
 void apuif_audio_write(const int16_t* s, int len, int channels);
+int apuif_use_external_process();
+void apuif_set_external_process(int flag);
 
 #ifdef __cplusplus
 }

@@ -63,6 +63,15 @@ c_read_reg(mrbc_vm *vm, mrbc_value *v, int argc)
 static void
 c_process(mrbc_vm *vm, mrbc_value *v, int argc)
 {
+    if (argc == 1 && v[1].tt == MRBC_TT_INTEGER) {
+        int val = mrbc_integer(v[1]);
+        if(1 == val){
+            apuif_set_external_process(1);
+            return;
+        }
+    }
+    apuif_set_external_process(0);
+
     static int16_t abuffer[(NTSC_SAMPLE+1)*2];
 
     int samples = apuif_process(abuffer, sizeof(abuffer));
