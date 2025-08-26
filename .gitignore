@@ -15,5 +15,4 @@ nsf_player/*.o
 nsf_player/nsf_player
 nsf_player/log*
 fatfs/home/*.bin
-
-
+fatfs/home/*.reglog

@@ -1,8 +1,5 @@
-puts "NSF replay test"
-
 require "filesystem-fat"
 require "nes-apu"
-require "machine"
 
 #   1. ヘッダー構造
 #   オフセット| サイズ | 内容
@@ -56,20 +53,20 @@ class ApuRegLog
         File.open(@path, "r") do |f|
             # Read header (32 bytes)
             magic = f.read(8)
-            puts "magic: #{magic.inspect}"
+            puts "  magic: #{magic.inspect}"
             
             # Read version (4 bytes, little-endian)
             version_bytes = f.read(4)
             version = read_uint32_le(version_bytes)
-            puts "version: #{version}"
+            puts "  version: #{version}"
             
             # Read entry_count (4 bytes, little-endian)
             entry_count = read_uint32_le(f.read(4))
-            puts "entry_count: #{entry_count}"
+            puts "  entry_count: #{entry_count}"
             
             # Read frame_count (4 bytes, little-endian)
             frame_count = read_uint32_le(f.read(4))
-            puts "frame_count: #{frame_count}"
+            puts "  frame_count: #{frame_count}"
             
             # Skip reserved (12 bytes)
             f.read(12)
@@ -102,7 +99,7 @@ class ApuRegLog
                 end
                 pos += ApuRegLog::ENTRY_SIZE 
             end
-            puts "@pos_play : #{@pos_play}"
+            #puts "@pos_play : #{@pos_play}"
         end #file close
 
         @current_frame = 0
@@ -129,7 +126,7 @@ class ApuRegLog
     def reset_to_init
         @current_frame = 0;
         if @file == nil
-            puts "open file #{@path}"
+            #puts "open file #{@path}"
             @file = File.open(@path, "r")
         end
         @current_pos = @pos_init
@@ -192,20 +189,20 @@ class MusicPlayer
     end
     
     def play_init
-        puts "frame end = #{@score.header[:frame_count]}"
+        #puts "frame end = #{@score.header[:frame_count]}"
 
         puts "\nExecuting INIT sequence..."
-        puts "reset APU"
+        #puts "reset APU"
         @sound_mod.reset
-        puts "reset_to_init Score"
+        #puts "reset_to_init Score"
         @score.reset_to_init
 
-        puts "pop_entries_from_frame"
+        #puts "pop_entries_from_frame"
         @score.pop_entries_from_frame do |addr,data| #first frame is INIT
             @sound_mod.write_reg(addr, data)
         end
         @score.restart_to_play
-        puts "Executing INIT sequence Done"
+        puts "Done"
         true
     end
     
@@ -242,7 +239,7 @@ class MusicPlayer
             # wait ~16.67ms for 60Hz
             #ts1 = Machine.get_hwcount
             if consumed_time_ms < 16
-                Machine.vtaskdelay(16 - consumed_time_ms)
+                Machine.vtaskdelay(16 - consumed_time_ms + 1)
             end
             #ts2 = Machine.get_hwcount
             #puts "sleep time:#{ts2-ts1}"
@@ -259,7 +256,7 @@ begin
         return
     end
 
-    filename = ARGV[0]
+    filename = ARGV[0]+".reglog"
     if not File.exist?(filename)
         puts "please set reglog file"
         return
@@ -271,7 +268,7 @@ begin
     end
 
     # Load NSF register control log file
-    puts "load reglog #{filename}"
+    #puts "load reglog #{filename}"
     reg_log = ApuRegLog.new(filename)
     
     # Create APU I/F
@@ -283,7 +280,7 @@ begin
     player = MusicPlayer.new(apu, reg_log)
     
     # Play music
-    puts "play music start"
+    #puts "play music start"
     player.play_init
     player.play_loop(loop_flag)
 
