@@ -251,8 +251,8 @@ class MusicPlayer
             consumed_time_ms = Machine.get_hwcount - t1
             #puts "consumed_time_ms:#{consumed_time_ms}"
             # wait ~16.67ms for 60Hz
-            if consumed_time_ms < 14
-                sleep_ms(14 - consumed_time_ms)
+            if consumed_time_ms < 2
+                sleep_ms(2 - consumed_time_ms)
             end
         end
         puts "Playback stopped after #{played_frame} frames"
@@ -278,6 +278,10 @@ begin
     puts "play music start"
     player.play_init
     player.play_loop(60*60)
+    puts "play music done"
+
+    # Stop audio
+    apu.reset
     
 rescue => e
     puts "Error: #{e}"
