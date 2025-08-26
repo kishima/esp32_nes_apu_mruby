@@ -201,3 +201,7 @@ Machine_get_hwcount(){
   return (int32_t)(esp_timer_get_time() / 1000ULL);
 }
 
+void Machine_vtaskdelay(uint32_t sleep_time_ms)
+{
+  vTaskDelay(pdMS_TO_TICKS(sleep_time_ms));
+}

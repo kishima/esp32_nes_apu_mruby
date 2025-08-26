@@ -197,6 +197,23 @@ c_Machine_get_hwcount(mrbc_vm *vm, mrbc_value *v, int argc)
 }
 
 static void
+c_Machine_vtaskdelay(mrbc_vm *vm, mrbc_value *v, int argc)
+{
+  if (argc != 1) {
+    mrbc_raise(vm, MRBC_CLASS(ArgumentError), "wrong number of arguments");
+    return;
+  }
+  if (GET_TT_ARG(1) != MRBC_TT_FIXNUM) {
+    mrbc_raise(vm, MRBC_CLASS(ArgumentError), "wrong type of arguments");
+    return;
+  }
+  uint32_t msec = GET_INT_ARG(1);
+
+  Machine_vtaskdelay(msec);
+  SET_NIL_RETURN();
+}
+
+static void
 c_Machine_exit(mrbc_vm *vm, mrbc_value *v, int argc)
 {
   int status;
@@ -238,6 +255,7 @@ mrbc_machine_init(mrbc_vm *vm)
 
   //add by kishima
   mrbc_define_method(vm, mrbc_class_Machine, "get_hwcount", c_Machine_get_hwcount);
+  mrbc_define_method(vm, mrbc_class_Machine, "vtaskdelay", c_Machine_vtaskdelay);
 
   mrbc_define_method(vm, mrbc_class_Machine, "exit", c_Machine_exit);
 }

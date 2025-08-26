@@ -37,6 +37,7 @@ bool Machine_set_hwclock(const struct timespec *ts);
 bool Machine_get_hwclock(struct timespec *ts);
 void Machine_exit(int status);
 int32_t Machine_get_hwcount();
+void Machine_vtaskdelay(uint32_t sleep_time_ms);
 
 #ifdef __cplusplus
 }

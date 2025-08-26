@@ -249,11 +249,15 @@ class MusicPlayer
             end
             
             consumed_time_ms = Machine.get_hwcount - t1
-            #puts "consumed_time_ms:#{consumed_time_ms}"
+            # puts "consumed_time_ms:#{consumed_time_ms}"
+
             # wait ~16.67ms for 60Hz
-            if consumed_time_ms < 2
-                sleep_ms(2 - consumed_time_ms)
+            #ts1 = Machine.get_hwcount
+            if consumed_time_ms < 16
+                Machine.vtaskdelay(16 - consumed_time_ms)
             end
+            #ts2 = Machine.get_hwcount
+            #puts "sleep time:#{ts2-ts1}"
         end
         puts "Playback stopped after #{played_frame} frames"
         true
