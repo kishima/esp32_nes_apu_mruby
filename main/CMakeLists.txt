@@ -1,6 +1,7 @@
 idf_component_register(SRCS "main.cpp"
-                       INCLUDE_DIRS "."
-                       REQUIRES apu_emu)
+                       INCLUDE_DIRS "." "../components/apu_emu/src"
+                       PRIV_REQUIRES spi_flash
+                       REQUIRES apu_emu picoruby-esp32)
 
 target_compile_options(__idf_main PRIVATE 
     -Wno-error  # Don't treat warnings as errors

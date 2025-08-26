@@ -1,0 +1,144 @@
+name: mruby/c Tests
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        test_type: [host_gcc, host_gcc_no_libc, host_clang, host_clang_no_libc, arm, arm_no_libc, mips, mips_no_libc]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Clone PicoRuby
+      run: git clone https://github.com/picoruby/picoruby
+
+    - name: Restore Cache
+      uses: actions/cache@v3
+      with:
+        path: /tmp/.buildx-cache
+        key: Linux-buildx-${{ github.sha }}
+        restore-keys: |
+          Linux-buildx-
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+        enableCrossOsArchive: true
+
+    - name: Build test container
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: true
+        tags: mrubyc-test:latest
+        build-args: |
+          USER_ID=1000
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+        platforms: linux/amd64
+
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+    - name: Run ${{ matrix.test_type }} tests
+      run: |
+        case ${{ matrix.test_type }} in
+          "host_gcc")
+            docker run \
+              -e CC=gcc \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=default \
+              -e RUBY="bin/picoruby" \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "host_gcc_no_libc")
+            docker run \
+              -e CC=gcc \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=default \
+              -e RUBY="bin/picoruby" \
+              -e PICORUBY_NO_LIBC_ALLOC=1 \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "host_clang")
+            docker run \
+              -e CC=clang \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=default \
+              -e RUBY="bin/picoruby" \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "host_clang_no_libc")
+            docker run \
+              -e CC=clang \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=default \
+              -e RUBY="bin/picoruby" \
+              -e PICORUBY_NO_LIBC_ALLOC=1 \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "arm")
+            docker run \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=arm-linux-gnueabihf \
+              -e RUBY="qemu-arm -L /usr/arm-linux-gnueabihf build/arm-linux-gnueabihf/bin/picoruby" \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "arm_no_libc")
+            docker run \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=arm-linux-gnueabihf \
+              -e RUBY="qemu-arm -L /usr/arm-linux-gnueabihf build/arm-linux-gnueabihf/bin/picoruby" \
+              -e PICORUBY_NO_LIBC_ALLOC=1 \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "mips")
+            docker run \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=mips-linux-gnu \
+              -e RUBY="qemu-mips -L /usr/mips-linux-gnu build/mips-linux-gnu/bin/picoruby" \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+          "mips_no_libc")
+            docker run \
+              -e PICORUBY_DEBUG=1 \
+              -e MRUBY_CONFIG=mips-linux-gnu \
+              -e RUBY="qemu-mips -L /usr/mips-linux-gnu build/mips-linux-gnu/bin/picoruby" \
+              -e PICORUBY_NO_LIBC_ALLOC=1 \
+              --rm -v ${{ github.workspace }}:/work/mrubyc mrubyc-test \
+              bash -c "rake clean && rake && ruby /work/mrubyc/test/0_runner.rb"
+            ;;
+        esac
+      shell: bash
+
+      #    - name: Setup tmate session
+      #      if: ${{ failure() }}
+      #      uses: mxschmitt/action-tmate@v3
+      #      with:
+      #        limit-access-to-actor: true

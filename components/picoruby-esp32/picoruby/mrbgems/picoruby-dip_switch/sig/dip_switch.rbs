@@ -1,0 +1,9 @@
+# @sidebar hardware_device
+class DipSwitch
+  @c_pin: GPIO | nil
+  @negative_logic: bool
+  @pins: Array[GPIO]
+
+  def self.new: (GPIO|nil c_pin, Array[Integer] pin_nums) -> instance
+  def read: () -> Integer
+end

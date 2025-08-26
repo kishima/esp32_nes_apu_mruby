@@ -1,0 +1,74 @@
+# TypeProf 0.21.3
+
+# for RUBY_ENGINE == "ruby"
+# @private
+class IO
+  def noecho: () { (untyped) -> untyped } -> untyped
+  def iflush: -> self
+end
+
+# Classes
+module Editor
+  def self.get_screen_size: -> [Integer, Integer]
+
+  class Base
+    @buffer: Editor::Buffer
+    @prompt_margin: Integer
+
+    def initialize: -> void
+    attr_reader width: Integer
+    attr_reader height: Integer
+    def put_buffer: (String | Symbol chr) -> void
+    def dump_buffer: () -> String
+    def clear_buffer: () -> void
+    def clear: () -> void
+    def home: () -> void
+    def next_head: () -> void
+    def physical_line_count: () -> Integer
+    def debug: (untyped text) -> Integer?
+
+    # for RUBY_ENGINE == "ruby"
+    attr_accessor debug_tty: String?
+    def system: (untyped command) -> Integer
+  end
+
+  class Line < Base
+    MAX_HISTORY_COUNT: Integer
+    @history: Array[Array[String]]
+    @history_index: Integer
+    @prev_cursor_y: Integer
+    @prompt: String
+    @prompt_margin: Integer
+
+    def initialize: -> void
+    def prompt=: (String word) -> Integer
+    def history_head: -> Integer
+    def save_history: -> Integer
+    def load_history: (:down | :up dir) -> void
+    def feed_at_bottom: -> Integer
+    def refresh: -> void
+    def start: () { (self, Editor::Buffer, Integer) -> void }  -> void
+  end
+
+  class Screen < Base
+    @content_margin_height: Integer
+    @visual_offset: Integer
+    @visual_cursor_x: Integer
+    @visual_cursor_y: Integer
+    @footer_proc: untyped # FIXME:??? ^(self) -> void
+    @cursor_proc: untyped # FIXME:??? ^(self) -> void
+
+    def initialize: -> void
+    attr_accessor footer_height: Integer
+    attr_accessor quit_by_sigint: bool
+    def load_file_into_buffer: (untyped filepath) -> bool
+    def save_file_from_buffer: (untyped filepath) -> String
+    def refresh: -> void
+    def refresh_cursor: () { (self) -> void } -> void
+    def refresh_footer: () { (self) -> void } -> void
+    def show_cursor: -> untyped
+    def calculate_visual_cursor: -> void
+    def start: () { (self, Editor::Buffer, Integer) -> void }  -> void
+  end
+end
+

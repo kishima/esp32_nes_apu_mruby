@@ -1,0 +1,8 @@
+class PicoRubyVM
+  class InstructionSequence
+    def self.compile: (String code, ?remove_lv: bool) -> instance
+    def self.compile_file: (String file) -> instance
+    def to_binary: () -> String
+    def eval: () -> Object
+  end
+end

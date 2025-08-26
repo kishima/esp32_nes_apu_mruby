@@ -27,8 +27,14 @@
 #include "noftypes.h"
 #include "log.h"
 #include "nes_apu.h"
-#include "nes6502.h"
- 
+// #include "nes6502.h"
+#include "esp_timer.h"
+
+// APUデバッグログ制御フラグ
+#define APU_DEBUG       0    // APU処理詳細ログ
+#define CHANNEL_DEBUG   0    // チャンネル状態ログ
+#define SAMPLE_DEBUG    0    // サンプル生成ログ
+#define APU_WRITE_DEBUG 0    // APU書き込みログ
 
 #define  APU_OVERSAMPLE
 #define  APU_VOLUME_DECAY(x)  ((x) -= ((x) >> 7))
@@ -111,7 +117,7 @@ void apu_getcontext(apu_t *dest_apu)
    *dest_apu = apu;
 }
 
-void apu_setchan(int chan, bool enabled)
+void apu_setchan(int chan, int enabled)
 {
    if (enabled)
       apu.mix_enable |= (1 << chan);
@@ -183,11 +189,24 @@ static int32 apu_rectangle_##ch(void) \
 { \
    int32 output, total; \
    int num_times; \
+   static int debug_call_count_##ch = 0; \
 \
    APU_VOLUME_DECAY(apu.rectangle[ch].output_vol); \
 \
-   if (false == apu.rectangle[ch].enabled || 0 == apu.rectangle[ch].vbl_length) \
+   /* デバッグ情報: チャンネル初期状態（最初の10回のみ） */ \
+   if (CHANNEL_DEBUG && debug_call_count_##ch < 10) { \
+      printf("PULSE%d[%d]: enabled=%d, vbl_length=%d, freq=%d, vol=%d\n", \
+             ch+1, debug_call_count_##ch, apu.rectangle[ch].enabled, \
+             apu.rectangle[ch].vbl_length, apu.rectangle[ch].freq, apu.rectangle[ch].volume); \
+      debug_call_count_##ch++; \
+   } \
+\
+   if (false == apu.rectangle[ch].enabled || 0 == apu.rectangle[ch].vbl_length) { \
+      if (CHANNEL_DEBUG && debug_call_count_##ch < 10) { \
+         printf("PULSE%d: disabled or vbl_length=0, returning %d\n", ch+1, APU_RECTANGLE_OUTPUT(ch)); \
+      } \
       return APU_RECTANGLE_OUTPUT(ch); \
+   } \
 \
    /* vbl length counter */ \
    if (false == apu.rectangle[ch].holdnote) \
@@ -208,8 +227,9 @@ static int32 apu_rectangle_##ch(void) \
    /* TODO: find true relation of freq_limit to register values */ \
    if (apu.rectangle[ch].freq < 8 \
        || (false == apu.rectangle[ch].sweep_inc \
-           && apu.rectangle[ch].freq > apu.rectangle[ch].freq_limit)) \
+           && apu.rectangle[ch].freq > apu.rectangle[ch].freq_limit)) { \
       return APU_RECTANGLE_OUTPUT(ch); \
+   } \
 \
    /* frequency sweeping at a rate of (sweep_delay + 1) / 120 secs */ \
    if (apu.rectangle[ch].sweep_on && apu.rectangle[ch].sweep_shifts) \
@@ -258,6 +278,13 @@ static int32 apu_rectangle_##ch(void) \
    } \
 \
    apu.rectangle[ch].output_vol = total / num_times; \
+   \
+   /* デバッグ情報: 出力値（最初の10回のみ） */ \
+   if (SAMPLE_DEBUG && debug_call_count_##ch <= 10) { \
+      printf("PULSE%d: output=%d, total=%d, num_times=%d, accum=%.3f\n", \
+             ch+1, apu.rectangle[ch].output_vol, total, num_times, apu.rectangle[ch].accum); \
+   } \
+   \
    return APU_RECTANGLE_OUTPUT(ch); \
 } 
 
@@ -548,10 +575,11 @@ static int32 apu_dmc(void)
          
          if (7 == delta_bit)
          {
-            apu.dmc.cur_byte = nes6502_getbyte(apu.dmc.address);
+            // DMC is not supported in standalone APU mode
+            apu.dmc.cur_byte = 0; // nes6502_getbyte(apu.dmc.address);
             
             /* steal a cycle from CPU*/
-            nes6502_burn(1);
+            // nes6502_burn(1);
 
             /* prevent wraparound */
             if (0xFFFF == apu.dmc.address)
@@ -611,6 +639,30 @@ static int32 apu_dmc(void)
 void apu_write(uint32 address, uint8 value)
 {  
    int chan;
+      
+   if (APU_WRITE_DEBUG) {
+      /* デバッグ: APU書き込みを表示 */
+      static int write_count = 0;
+      static uint32_t last_write_time = 0;
+      uint32_t current_time = 0;  // ミリ秒
+
+      current_time = esp_timer_get_time() / 1000;
+      printf("APU_WRITE[%d]: addr=$%04X, val=$%02X (time=%lu ms, delta=%lu ms)\n", 
+              write_count, address, value, current_time, current_time - last_write_time);
+   
+      // 特別なレジスタの場合は詳細情報を表示（チャンネル有効化は常に表示）
+      if (address == 0x4015) {
+            printf("  -> CHANNEL ENABLE: Pulse1=%s, Pulse2=%s, Triangle=%s, Noise=%s, DMC=%s\n",
+                  (value & 0x01) ? "ON" : "OFF",
+                  (value & 0x02) ? "ON" : "OFF", 
+                  (value & 0x04) ? "ON" : "OFF",
+                  (value & 0x08) ? "ON" : "OFF",
+                  (value & 0x10) ? "ON" : "OFF");
+      }
+   
+      write_count++;
+      last_write_time = current_time;
+   }
 
    switch (address)
    {
@@ -872,12 +924,95 @@ uint8 apu_read(uint32 address)
       out = -0x8000; \
 }
 
+void dump_apu(){
+      printf("=== APU DEBUG ===\n");
+      printf("APU: enable_reg=0x%02X, mix_enable=0x%02X\n", apu.enable_reg, apu.mix_enable);
+      printf("APU: sample_rate=%d, sample_bits=%d, refresh_rate=%d\n", 
+             apu.sample_rate, apu.sample_bits, apu.refresh_rate);
+      
+      /* Pulse Channel 1 */
+      printf("PULSE1: enabled=%d, freq=%d, vol=%d, duty=%d\n",
+             apu.rectangle[0].enabled, apu.rectangle[0].freq, 
+             apu.rectangle[0].volume, apu.rectangle[0].duty_flip);
+      printf("PULSE1: regs=[%02X %02X %02X %02X]\n",
+             apu.rectangle[0].regs[0], apu.rectangle[0].regs[1],
+             apu.rectangle[0].regs[2], apu.rectangle[0].regs[3]);
+             
+      /* Pulse Channel 2 */
+      printf("PULSE2: enabled=%d, freq=%d, vol=%d, duty=%d\n",
+             apu.rectangle[1].enabled, apu.rectangle[1].freq,
+             apu.rectangle[1].volume, apu.rectangle[1].duty_flip);
+      printf("PULSE2: regs=[%02X %02X %02X %02X]\n",
+             apu.rectangle[1].regs[0], apu.rectangle[1].regs[1],
+             apu.rectangle[1].regs[2], apu.rectangle[1].regs[3]);
+             
+      /* Triangle Channel */
+      printf("TRIANGLE: enabled=%d, freq=%d, vol=%d\n",
+             apu.triangle.enabled, apu.triangle.freq, apu.triangle.output_vol);
+      printf("TRIANGLE: regs=[%02X %02X %02X]\n",
+             apu.triangle.regs[0], apu.triangle.regs[1], apu.triangle.regs[2]);
+             
+      /* Noise Channel */
+      printf("NOISE: enabled=%d, freq=%d, vol=%d\n",
+             apu.noise.enabled, apu.noise.freq, apu.noise.output_vol);
+      printf("NOISE: regs=[%02X %02X %02X]\n",
+             apu.noise.regs[0], apu.noise.regs[1], apu.noise.regs[2]);
+             
+      /* DMC Channel */
+      printf("DMC: enabled=%d, freq=%d, vol=%d\n",
+             apu.dmc.enabled, apu.dmc.freq, apu.dmc.output_vol);
+      printf("DMC: regs=[%02X %02X %02X %02X]\n",
+             apu.dmc.regs[0], apu.dmc.regs[1], apu.dmc.regs[2], apu.dmc.regs[3]);
+      printf("========================\n");
+
+}
+
+/* 簡素化されたPULSE1テスト関数 */
+void apu_force_pulse1_test_tone()
+{
+   static bool test_tone_initialized = false;
+   
+   if (!test_tone_initialized) {
+      printf("APU: Simple PULSE1 test tone setup\n");
+      
+      /* 最小限の設定 */
+      apu.rectangle[0].enabled = true;
+      apu.rectangle[0].volume = 15;
+      apu.rectangle[0].fixed_envelope = true;
+      apu.rectangle[0].holdnote = true;
+      apu.rectangle[0].vbl_length = 255;
+      apu.rectangle[0].output_vol = 15 << 8;  // スケール調整
+      
+      /* より高い周波数でテスト (440Hz程度) */
+      apu.rectangle[0].freq = 353;
+      apu.rectangle[0].accum = 0.0f;
+      apu.rectangle[0].adder = 0;
+      apu.rectangle[0].duty_flip = 2;
+      
+      /* APU設定 */
+      apu.enable_reg = 0x01;
+      apu.mix_enable = 0x01;
+      
+      printf("APU: Simple test tone configured\n");
+      test_tone_initialized = true;
+   }
+}
+
 void apu_process(void *buffer, int num_samples)
 {
    static int32 prev_sample = 0;
+   static int debug_frame_count = 0;
 
    int16 *buf16;
    uint8 *buf8;
+   
+   /* APU構造体デバッグ情報 - 300フレームごとに表示 */
+   if (APU_DEBUG && debug_frame_count % 300 == 0 && buffer != NULL) {
+      printf("apu_process: num_samples=%d, mix_enable=0x%02X\n", num_samples, apu.mix_enable);
+      printf("APU: enable_reg=0x%02X, cycle_rate=%.3f\n", apu.enable_reg, apu.cycle_rate);
+   }
+
+   debug_frame_count++;
 
    if (NULL != buffer)
    {
@@ -887,22 +1022,55 @@ void apu_process(void *buffer, int num_samples)
       buf16 = (int16 *) buffer;
       buf8 = (uint8 *) buffer;
 
+      /* テスト用: PULSE1チャンネルで440Hzトーン出力 */
+      //apu_force_pulse1_test_tone();
+
+      int sample_count = 0;
+      static int32 debug_accum_sum = 0;
+      static int debug_nonzero_samples = 0;
+      
       while (num_samples--)
       {
          int32 next_sample, accum = 0;
+         int32 pulse1_val = 0, pulse2_val = 0, triangle_val = 0, noise_val = 0, dmc_val = 0;
 
-         if (apu.mix_enable & 0x01)
-            accum += apu_rectangle_0();
-         if (apu.mix_enable & 0x02)
-            accum += apu_rectangle_1();
-         if (apu.mix_enable & 0x04)
-            accum += apu_triangle();
-         if (apu.mix_enable & 0x08)
-            accum += apu_noise();
-         if (apu.mix_enable & 0x10)
-            accum += apu_dmc();
+         if (apu.mix_enable & 0x01) {
+            pulse1_val = apu_rectangle_0();
+            accum += pulse1_val;
+         }
+         if (apu.mix_enable & 0x02) {
+            pulse2_val = apu_rectangle_1();
+            accum += pulse2_val;
+         }
+         if (apu.mix_enable & 0x04) {
+            triangle_val = apu_triangle();
+            accum += triangle_val;
+         }
+         if (apu.mix_enable & 0x08) {
+            noise_val = apu_noise();
+            accum += noise_val;
+         }
+         if (apu.mix_enable & 0x10) {
+            dmc_val = apu_dmc();
+            accum += dmc_val;
+         }
          if (apu.ext && (apu.mix_enable & 0x20))
             accum += apu.ext->process();
+         
+         debug_accum_sum += accum;
+         if (accum != 0) debug_nonzero_samples++;
+         
+         /* 最初の数サンプルで詳細デバッグ */
+         if (SAMPLE_DEBUG && debug_frame_count < 5 && sample_count < 5) {
+            printf("Sample[%d]: p1=%d, p2=%d, tri=%d, noise=%d, dmc=%d, total=%d\n",
+                   sample_count, pulse1_val, pulse2_val, triangle_val, noise_val, dmc_val, accum);
+         }
+         
+         sample_count++;
+         if (sample_count > 300) {
+            printf("apu_process: ERROR - too many samples processed!\n");
+            break;
+         }
 
          /* do any filtering */
          if (APU_FILTER_NONE != apu.filter_type)
@@ -928,6 +1096,16 @@ void apu_process(void *buffer, int num_samples)
             *buf16++ = (int16) accum;
          else
             *buf8++ = (accum >> 8) ^ 0x80;
+      }
+      
+      /* 300フレームごとに統計情報を表示 */
+      if (APU_DEBUG && debug_frame_count % 300 == 0) {
+         printf("APU Stats: avg_accum=%d, nonzero_samples=%d/%d (%.1f%%)\n",
+                sample_count > 0 ? debug_accum_sum / sample_count : 0,
+                debug_nonzero_samples, sample_count,
+                sample_count > 0 ? (100.0f * debug_nonzero_samples / sample_count) : 0.0f);
+         debug_accum_sum = 0;
+         debug_nonzero_samples = 0;
       }
    }
 }
@@ -1008,6 +1186,13 @@ apu_t *apu_create(double base_freq, int sample_rate, int refresh_rate, int sampl
    /* set the update routine */
    temp_apu->process = apu_process;
    temp_apu->ext = NULL;
+   
+   // Debug: Check function pointer address immediately after assignment
+   printf("APU_CREATE: apu_process function address: %p\n", apu_process);
+   printf("APU_CREATE: temp_apu->process assigned to: %p\n", temp_apu->process);
+   if (temp_apu->process != apu_process) {
+       printf("APU_CREATE: ERROR - Function pointer assignment failed!\n");
+   }
 
    /* clear the callbacks */
    temp_apu->irq_callback = NULL;
@@ -1023,6 +1208,15 @@ apu_t *apu_create(double base_freq, int sample_rate, int refresh_rate, int sampl
    apu_setfilter(APU_FILTER_WEIGHTED);
 
    apu_getcontext(temp_apu);
+
+   // Debug: Final check of function pointer before returning
+   printf("APU_CREATE: Final temp_apu->process: %p\n", temp_apu->process);
+   printf("APU_CREATE: Expected apu_process: %p\n", apu_process);
+   if (temp_apu->process != apu_process) {
+       printf("APU_CREATE: ERROR - Function pointer corrupted during creation!\n");
+   } else {
+       printf("APU_CREATE: Function pointer is correct\n");
+   }
 
    return temp_apu;
 }

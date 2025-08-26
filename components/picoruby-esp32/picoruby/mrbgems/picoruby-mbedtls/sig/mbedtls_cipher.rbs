@@ -1,0 +1,24 @@
+module MbedTLS
+  class Cipher
+    type cipher_t = "AES-128-CBC"
+                    | "AES-192-CBC"
+                    | "AES-256-CBC"
+                    | "AES-128-GCM"
+                    | "AES-192-GCM"
+                    | "AES-256-GCM"
+
+    def self.new: (cipher_t cipher_suite) -> MbedTLS::Cipher
+    def self.ciphers: () -> Array[cipher_t]
+    def encrypt: () -> MbedTLS::Cipher
+    def decrypt: () -> MbedTLS::Cipher
+    def key_len: () -> Integer
+    def key=: (String key) -> String
+    def iv_len: () -> Integer
+    def iv=: (String iv) -> String
+    def update: (String input) -> String
+    def update_ad: (String input) -> MbedTLS::Cipher
+    def finish: () -> String
+    def write_tag: () -> String
+    def check_tag: (String tag) -> bool
+  end
+end

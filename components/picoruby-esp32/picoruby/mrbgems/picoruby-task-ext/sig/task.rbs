@@ -1,0 +1,18 @@
+class Task
+  TASKS: Hash[String, Task]
+
+  @proc: Proc
+  @args: Array[untyped]
+  @sandbox: Sandbox
+
+  attr_reader name: String | nil
+
+  def self.list: () -> Array[Task]
+
+  def self.new: (*untyped) { (*untyped) -> void } -> instance
+  def name=: (String name) -> String
+  def suspend: () -> self
+  def terminate: () -> self
+  def join: (?Integer|nil) -> (self | nil)
+  private def _start: () -> void
+end

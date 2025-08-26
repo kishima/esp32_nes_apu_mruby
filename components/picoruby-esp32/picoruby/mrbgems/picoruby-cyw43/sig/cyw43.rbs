@@ -1,0 +1,43 @@
+# @sidebar hardware_device
+class CYW43
+
+  # @sidebar error
+  class ConnectTimeout < RuntimeError
+  end
+
+  LINK_DOWN:    Integer
+  LINK_JOIN:    Integer
+  LINK_NOIP:    Integer
+  LINK_UP:      Integer
+  LINK_FAIL:    Integer
+  LINK_NONET:   Integer
+  LINK_BADAUTH: Integer
+
+  def self.init: (?String country, ?force: bool) -> bool
+  def self.initialized?: () -> bool
+  def self.connect_timeout: (String ssid, String password, Integer augh, ?Integer timeout) -> bool
+  def self.enable_sta_mode: () -> bool
+  def self.disable_sta_mode: () -> bool
+  def self.tcpip_link_status: () -> Integer
+  def self.link_connected?: (?bool print_status) -> bool
+  private def self._init: (String | nil country, bool force) -> bool
+
+  # @sidebar hardware_device
+  class GPIO
+    LED_PIN: Integer
+    @pin: Integer
+    def initialize: (Integer pin) -> void
+    def write: (Integer) -> Integer
+    def read: () -> GPIO::gpio_logic_t
+    def high?: () -> bool
+    def low?: () -> bool
+  end
+
+  # @sidebar hardware_device
+  class Auth
+    OPEN: Integer
+    WPA_TKIP_PSK: Integer
+    WPA2_AES_PSK: Integer
+    WPA2_MIXED_PSK: Integer
+  end
+end

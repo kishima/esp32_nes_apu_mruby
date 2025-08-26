@@ -245,7 +245,7 @@ extern void apu_reset(void);
 
 extern void apu_setext(apu_t *apu, apuext_t *ext);
 extern void apu_setfilter(int filter_type);
-extern void apu_setchan(int chan, bool enabled);
+extern void apu_setchan(int chan, int enabled);
 
 extern uint8 apu_read(uint32 address);
 extern void apu_write(uint32 address, uint8 value);
