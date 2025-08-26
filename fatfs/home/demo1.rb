@@ -152,6 +152,47 @@ class ApuWrapper
   end
 end
 
+def show_params
+  puts "=== NES APU Channel Parameters ==="
+  puts ""
+  puts "-- Pulse Channels (pulse1/pulse2) --"
+  puts ":volume      - Volume level (0-15)"
+  puts ":duty        - Duty cycle (0-3): 0=12.5%, 1=25%, 2=50%, 3=75%"
+  puts ":constant    - Constant volume mode (0/1): 1=use volume value, 0=use envelope"
+  puts ":loop        - Envelope loop (0/1): 1=disable length counter"
+  puts ":sweep       - Sweep settings (0-255): bits 7-4=period, bit 3=negate, bits 2-0=shift"
+  puts ":timer_low   - Timer low 8 bits (0-255): determines frequency"
+  puts ":timer_high  - Timer high 3 bits (0-7): determines frequency"
+  puts ":length      - Length counter (0-31): sound duration"
+  puts ""
+  puts "-- Triangle Channel --"
+  puts ":control     - Linear counter control (0-255): bit 7=control flag, bits 6-0=reload value"
+  puts ":timer_low   - Timer low 8 bits (0-255): determines frequency"
+  puts ":timer_high  - Timer high 3 bits (0-7): determines frequency"
+  puts ":length      - Length counter (0-31): sound duration"
+  puts ""
+  puts "-- Noise Channel --"
+  puts ":volume      - Volume level (0-15)"
+  puts ":constant    - Constant volume mode (0/1): 1=use volume value, 0=use envelope"
+  puts ":loop        - Envelope loop (0/1): 1=disable length counter"
+  puts ":period      - Noise period (0-15): lower values = higher frequency"
+  puts ":loop_noise  - Noise type (0/1): 0=normal noise, 1=short period noise"
+  puts ":length      - Length counter (0-31): sound duration"
+  puts ""
+  puts "-- DMC Channel --"
+  puts ":rate        - Sample rate (0-15): sampling frequency"
+  puts ":loop        - Loop playback (0/1): 1=repeat sample"
+  puts ":irq         - IRQ enable (0/1): 1=generate IRQ on completion"
+  puts ":direct      - Direct output (0-127): immediately set DAC value"
+  puts ":address     - Sample address (0-255): $C000 + (address * 64)"
+  puts ":length      - Sample length (0-255): (length * 16) + 1 bytes"
+  puts ""
+  puts "-- Control Channel --"
+  puts ":enable      - Channel enable (0-31): bits 0-4 = Pulse1,2,Triangle,Noise,DMC"
+  puts ":frame_counter - Frame counter mode (0-255): bit 7=5-step mode, bit 6=IRQ disable"
+  puts "===================="
+end
+
 def show_info
   puts "=== NES APU Registers ==="
   puts ""
@@ -194,7 +235,7 @@ end
 apu = NesApu.new()
 wrapper = ApuWrapper.new(apu)
 
-show_info
+show_params
 
 # Usage: wrapper.set(:channel, :setting, value)
 # Supported channels: :pulse1, :pulse2, :triangle, :noise, :dmc, :control
@@ -209,15 +250,16 @@ puts "\n=== Example Usage ==="
 puts "Enable all channels:"
 wrapper.set(:control, :enable, 0x1F)
 
-puts "Set Pulse1 to play middle C (262Hz):"
-loop do
-  wrapper.set(:pulse1, :duty, 2)
-  wrapper.set(:pulse1, :volume, 15)
-  wrapper.set(:pulse1, :constant, 1)
-  wrapper.set(:pulse1, :timer_low, 0xFD)
-  wrapper.set(:pulse1, :timer_high, 0x02)
-  wrapper.set(:pulse1, :length, 0x10)
+puts "Set Pulse1 to play continuous middle C (262Hz):"
+wrapper.set(:pulse1, :duty, 2)
+wrapper.set(:pulse1, :volume, 15)
+wrapper.set(:pulse1, :constant, 1)
+wrapper.set(:pulse1, :loop, 1)  # Enable loop to prevent length counter from silencing
+wrapper.set(:pulse1, :timer_low, 0xFD)
+wrapper.set(:pulse1, :timer_high, 0x02)
+wrapper.set(:pulse1, :length, 0x00)  # Length counter disabled when loop is set
 
-  apu.process(1)
+loop do
+  apu.process
   Machine.vtaskdelay(16)
 end
