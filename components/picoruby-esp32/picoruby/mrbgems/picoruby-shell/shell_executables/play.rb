@@ -217,6 +217,8 @@ class MusicPlayer
             @score.pop_entries_from_frame do |addr,data| 
                 @sound_mod.write_reg(addr, data)
             end
+            @sound_mod.process
+        
             played_frame += 1
 
             # Status every second (60 frames)

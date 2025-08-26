@@ -198,8 +198,6 @@ void emu_task(void* arg)
   mount_filesystem(); //mount the filesystem!  
   _apulog_entries = apuif_read_entries(DEMO_BIN_FILE, &_apulog_header);
 
-#endif
-
   // 60Hz timing constants
   const uint64_t target_frame_time_us = 16667;  // 60Hz = 16.67ms
   uint64_t next_frame_time = esp_timer_get_time();
@@ -208,7 +206,6 @@ void emu_task(void* arg)
   
   printf("Starting 60Hz NSF playback loop...\n");
 
-  _audio_initialized = 1;
   while(true) //emu loop
   {
     uint64_t frame_start = esp_timer_get_time();
@@ -247,6 +244,16 @@ void emu_task(void* arg)
     }
 #endif
   }
+#else
+
+  _audio_initialized = 1;
+  while(true) //emu loop
+  {
+    //audio process is handled by picoruby
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+#endif
+
 }
 
 extern "C" void app_main(void)

@@ -243,7 +243,7 @@ class MusicPlayer
             # wait ~16.67ms for 60Hz
             #ts1 = Machine.get_hwcount
             if consumed_time_ms < 16
-                Machine.vtaskdelay(16 - consumed_time_ms)
+                Machine.vtaskdelay(16 - consumed_time_ms + 1)
             end
             #ts2 = Machine.get_hwcount
             #puts "sleep time:#{ts2-ts1}"
