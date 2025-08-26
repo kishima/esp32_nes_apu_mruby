@@ -1,26 +1,26 @@
 # esp32_nes_apu_mruby
 
-## 機能
+## Features
 
-PicoRubyで、ファミコンエミュレータのAPU音源を鳴らすためのプロジェクトです
+A project for playing NES (Famicom) APU sound sources using PicoRuby on ESP32.
 
-## ターゲットデバイス
+## Target Device
 
-M5StickC plus2 向けに設定しています。
+Configured for M5StickC plus2.
 
-PSRAMは必須です。
+PSRAM is mandatory.
 
-PSRAM搭載のESP32シリーズであれば、FlashのサイズやPSRAMのサイズを調整して動作できるかと思いますが、確認してません。
+While other ESP32 series with PSRAM should work by adjusting Flash and PSRAM sizes, this has not been verified.
 
-### 必要な外部デバイス
+### Required External Devices
 
-I2Sのスレーブデバイスが必要です。
-PCM5102で動作確認してます。
-apu_emuの`#define USE_I2S`をコメントアウトすると、PWMでも動作するはずです。
+An I2S slave device is required.
+Tested with PCM5102.
+You can also use PWM output by commenting out `#define USE_I2S` in apu_emu.
 
-### 配線
+### Wiring
 
-以下の通り。`apu_if.h`を編集して変更可能です。
+Pin configuration as follows. Can be changed by editing `apu_if.h`.
 
 ```
 #define PIN_BCK   GPIO_NUM_26
@@ -28,39 +28,39 @@ apu_emuの`#define USE_I2S`をコメントアウトすると、PWMでも動作�
 #define PIN_DOUT  GPIO_NUM_33
 ```
 
-## ESP32向けのビルド
+## Building for ESP32
 
-.devcontainerフォルダをおいてますが、devcontainerとしては動作確認しておらず、私は以下のようなコマンドで動作確認してます。
+A .devcontainer folder is provided, but hasn't been tested as a devcontainer. I use the following commands for testing:
 
-### 初回だけ
+### First Time Setup
 
 ```bash
-cd .devcotainer
+cd .devcontainer
 ./build.sh
 ./.devcontainer/run_devcontainer.sh idf.py set-target esp32
 ```
 
-### 通常のビルド
+### Regular Build
 
 ```bash
 ./.devcontainer/run_devcontainer.sh idf.py build
 ./.devcontainer/run_devcontainer.sh idf.py flash
 ```
 
-## 使い方
+## Usage
 
-`fatfs/home/` 以下に `logformat.txt` に記載した形式のバイナリファイルを配置してR2P2のシェルから、以下のコマンドで再生できます。
+Place binary files in the format specified in `logformat.txt` under `fatfs/home/` and use the following command from the R2P2 shell:
 
-バイナリファイルの拡張子は、reglogです。
+Binary files should have the `.reglog` extension.
 
 ```
 $> play sample
 ```
 
-## クレジット
+## Credits
 
-sample.reglogファイルは以下のNSFファイルから生成したものです。
+The sample.reglog file was generated from the following NSF file:
 
-元の作品: "crimmy buzz.nsf" by big lumby, CC BY-NC-SA 3.0
+Original work: "crimmy buzz.nsf" by big lumby, CC BY-NC-SA 3.0
 
 https://battleofthebits.com/arena/Entry/crimmy+buzz.nsf/50518/
