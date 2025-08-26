@@ -638,31 +638,30 @@ static int32 apu_dmc(void)
 void apu_write(uint32 address, uint8 value)
 {  
    int chan;
-   
-   /* デバッグ: APU書き込みを表示 */
-   static int write_count = 0;
-   static uint32_t last_write_time = 0;
-   uint32_t current_time = esp_timer_get_time() / 1000;  // ミリ秒
-   
-   if (APU_WRITE_DEBUG && write_count < 50) {  // 最初の50回のみ表示
-       printf("APU_WRITE[%d]: addr=$%04X, val=$%02X (time=%lu ms, delta=%lu ms)\n", 
+      
+   if (APU_WRITE_DEBUG) {
+      /* デバッグ: APU書き込みを表示 */
+      static int write_count = 0;
+      static uint32_t last_write_time = 0;
+      uint32_t current_time = 0;  // ミリ秒
+
+      current_time = esp_timer_get_time() / 1000;
+      printf("APU_WRITE[%d]: addr=$%04X, val=$%02X (time=%lu ms, delta=%lu ms)\n", 
               write_count, address, value, current_time, current_time - last_write_time);
-   }
    
-   // 特別なレジスタの場合は詳細情報を表示（チャンネル有効化は常に表示）
-   if (APU_WRITE_DEBUG && address == 0x4015) {
-       printf("  -> CHANNEL ENABLE: Pulse1=%s, Pulse2=%s, Triangle=%s, Noise=%s, DMC=%s\n",
-              (value & 0x01) ? "ON" : "OFF",
-              (value & 0x02) ? "ON" : "OFF", 
-              (value & 0x04) ? "ON" : "OFF",
-              (value & 0x08) ? "ON" : "OFF",
-              (value & 0x10) ? "ON" : "OFF");
-   }
+      // 特別なレジスタの場合は詳細情報を表示（チャンネル有効化は常に表示）
+      if (address == 0x4015) {
+            printf("  -> CHANNEL ENABLE: Pulse1=%s, Pulse2=%s, Triangle=%s, Noise=%s, DMC=%s\n",
+                  (value & 0x01) ? "ON" : "OFF",
+                  (value & 0x02) ? "ON" : "OFF", 
+                  (value & 0x04) ? "ON" : "OFF",
+                  (value & 0x08) ? "ON" : "OFF",
+                  (value & 0x10) ? "ON" : "OFF");
+      }
    
-   write_count++;
-#ifdef ESP_PLATFORM
-   last_write_time = current_time;
-#endif
+      write_count++;
+      last_write_time = current_time;
+   }
 
    switch (address)
    {

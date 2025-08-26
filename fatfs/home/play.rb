@@ -89,12 +89,12 @@ class ApuRegLog
                 puts "check init frame pos=#{pos}"
                 entry = read_entry_all(f,pos)
                 if entry[:event_type] == ApuRegLog::APU_EVENT_WRITE || entry[:event_type] == ApuRegLog::APU_EVENT_INIT_START
-                    puts "#{entry[:frame_number]}: addr:#{entry[:addr]}, data:#{entry[:data]}, event_type:#{entry[:event_type]} "
+                    puts "frame:#{entry[:frame_number]}, addr:#{entry[:addr]}, data:#{entry[:data]}, event_type:#{entry[:event_type]} "
                 elsif entry[:event_type] == ApuRegLog::APU_EVENT_INIT_END
                     @pos_play = pos + 12
                     break
                 elsif entry[:event_type] == ApuRegLog::APU_EVENT_PLAY_START
-                    @pos_play = pos
+                    @pos_play = f.tell
                     break
                 else #PLAY_END
                     @pos_play = nil
@@ -138,9 +138,14 @@ class ApuRegLog
     #     nil
     # end
 
-    def reset
+    def reset_to_init
         @current_frame = 0;
-        @file.close if @file
+        if @file == nil
+            puts "open file #{@path}"
+            @file = File.open(@path, "r")
+        end
+        @current_pos = @pos_init
+        @file.seek(@current_pos, 0)
     end
 
     def restart_to_play
@@ -149,44 +154,31 @@ class ApuRegLog
         if @file == nil
             @file = File.open(@path, "r")
         end
-        @file.seek(@current_pos, IO::SEEK_SET)
+        @file.seek(@current_pos, 0)
     end
 
     def pop_entries_from_frame
         puts "pop_entries_from_frame @current_pos=#{@current_pos}"
 
-        if @file == nil
-            @file = File.open(@path, "r")
-        end
-
-        is_write_fetched = false
-
         pos = @current_pos;
         while pos < (@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE
-            val = @file.read(4) # time is not used
-            if val == nil #end
-                if @file.eof?
-                    # Loop back to beginning if we reach the end
-                    restart_to_play
-                else
-                    puts "read error!"
-                end
-                break
-            end
+
+            @file.read(4) # time is not used
             addr = read_uint16_le(@file.read(2))
             data = @file.getbyte
             event_type = @file.getbyte
+            fno = read_uint32_le(@file.read(4)) #frame number
+
+            puts "fno:#{fno} pos:#{pos} < max:#{(@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE}, event_type:#{event_type}"
+
             if event_type == ApuRegLog::APU_EVENT_WRITE
-                is_write_fetched = true
                 yield addr, data
             elsif event_type == ApuRegLog::APU_EVENT_PLAY_START
-                if is_write_fetched
-                    #new frame
-                    @current_pos = @file.tell
-                    break
-                end
+                #no write data, skip this frame
+                @current_pos = @file.tell
+                break
             end
-            @file.read(4) #frame number not used
+
             pos += ApuRegLog::ENTRY_SIZE
         end
     end
@@ -212,13 +204,18 @@ class MusicPlayer
     
     def play_init
         puts "\nExecuting INIT sequence..."
+        puts "reset APU"
         @sound_mod.reset
-        @score.reset
+        puts "reset_to_init Score"
+        @score.reset_to_init
 
+        puts "pop_entries_from_frame"
         @score.pop_entries_from_frame do |addr,data| #first frame is INIT
-            puts "addr:#{addr} data:#{data}"
+            #puts "init:addr:#{addr} data:#{data}"
             @sound_mod.write_reg(addr, data)
         end
+        @score.restart_to_play
+        puts "Executing INIT sequence Done"
         true
     end
     
@@ -229,7 +226,7 @@ class MusicPlayer
         loop do
             t1 = Machine.get_hwcount
 
-            @score.pop_entries_from_frame do |addr,data|                
+            @score.pop_entries_from_frame do |addr,data| 
                 @sound_mod.write_reg(addr, data)
             end
             played_frame += 1
@@ -245,6 +242,7 @@ class MusicPlayer
             end
             
             consumed_time_ms = Machine.get_hwcount - t1
+            #puts "consumed_time_ms:#{consumed_time_ms}"
             # wait ~16.67ms for 60Hz
             if consumed_time_ms < 16
                 sleep_ms(16 - consumed_time_ms)
@@ -271,9 +269,8 @@ begin
     
     # Play music
     puts "play music start"
-    if player.play_init
-        player.play_loop(60*60)
-    end
+    player.play_init
+    player.play_loop(60*60)
     
 rescue => e
     puts "Error: #{e}"
