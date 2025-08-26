@@ -83,13 +83,12 @@ class ApuRegLog
             @pos_init = 32;
 
             #check INIT frame
-            puts "check INIT frame"
             pos = @pos_init
             while pos < (@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE
-                puts "check init frame pos=#{pos}"
+                #puts "check init frame pos=#{pos}"
                 entry = read_entry_all(f,pos)
                 if entry[:event_type] == ApuRegLog::APU_EVENT_WRITE || entry[:event_type] == ApuRegLog::APU_EVENT_INIT_START
-                    puts "frame:#{entry[:frame_number]}, addr:#{entry[:addr]}, data:#{entry[:data]}, event_type:#{entry[:event_type]} "
+                    #puts "frame:#{entry[:frame_number]}, addr:#{entry[:addr]}, data:#{entry[:data]}, event_type:#{entry[:event_type]} "
                 elsif entry[:event_type] == ApuRegLog::APU_EVENT_INIT_END
                     @pos_play = pos + 12
                     break
@@ -158,7 +157,7 @@ class ApuRegLog
     end
 
     def pop_entries_from_frame
-        puts "pop_entries_from_frame @current_pos=#{@current_pos}"
+        #puts "pop_entries_from_frame @current_pos=#{@current_pos}"
 
         pos = @current_pos;
         while pos < (@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE
@@ -169,13 +168,14 @@ class ApuRegLog
             event_type = @file.getbyte
             fno = read_uint32_le(@file.read(4)) #frame number
 
-            puts "fno:#{fno} pos:#{pos} < max:#{(@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE}, event_type:#{event_type}"
+            #puts "fno:#{fno} pos:#{pos} < max:#{(@header[:entry_count]+1) * ApuRegLog::ENTRY_SIZE}, event_type:#{event_type}"
 
             if event_type == ApuRegLog::APU_EVENT_WRITE
                 yield addr, data
             elsif event_type == ApuRegLog::APU_EVENT_PLAY_START
                 #no write data, skip this frame
                 @current_pos = @file.tell
+                @current_frame = fno
                 break
             end
 
@@ -203,6 +203,8 @@ class MusicPlayer
     end
     
     def play_init
+        puts "frame end = #{@score.header[:frame_count]}"
+
         puts "\nExecuting INIT sequence..."
         puts "reset APU"
         @sound_mod.reset
@@ -211,7 +213,6 @@ class MusicPlayer
 
         puts "pop_entries_from_frame"
         @score.pop_entries_from_frame do |addr,data| #first frame is INIT
-            #puts "init:addr:#{addr} data:#{data}"
             @sound_mod.write_reg(addr, data)
         end
         @score.restart_to_play
@@ -222,6 +223,7 @@ class MusicPlayer
     def play_loop(max_frames = nil)
         puts "\nStarting playback..."
         played_frame = 0
+        frame_end = @score.header[:frame_count]
 
         loop do
             t1 = Machine.get_hwcount
@@ -235,17 +237,22 @@ class MusicPlayer
             if played_frame % 60 == 0
                 puts "Current Frame: #{@score.current_frame}"
             end
-            
+
             # Check if we should stop
             if max_frames && played_frame >= max_frames
                 break
+            end
+
+            if @score.current_frame >= frame_end - 1
+                puts "restart_to_play"
+                @score.restart_to_play
             end
             
             consumed_time_ms = Machine.get_hwcount - t1
             #puts "consumed_time_ms:#{consumed_time_ms}"
             # wait ~16.67ms for 60Hz
-            if consumed_time_ms < 16
-                sleep_ms(16 - consumed_time_ms)
+            if consumed_time_ms < 14
+                sleep_ms(14 - consumed_time_ms)
             end
         end
         puts "Playback stopped after #{played_frame} frames"
