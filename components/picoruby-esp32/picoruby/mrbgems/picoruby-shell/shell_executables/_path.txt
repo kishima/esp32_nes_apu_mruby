@@ -20,3 +20,4 @@
 /bin/vim
 /bin/wifi_connect
 /bin/play
+/bin/nes_synth
