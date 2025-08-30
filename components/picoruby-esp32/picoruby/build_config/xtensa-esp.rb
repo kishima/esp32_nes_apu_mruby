@@ -21,7 +21,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
 
   #conf.gembox 'peripherals'
   #conf.gem core: 'picoruby-gpio' # this is required by shell without dependency.
-
+  conf.gem core: 'picoruby-uart'
+  
   conf.gembox 'r2p2'
   conf.gem core: "picoruby-machine"
   conf.gem core: "picoruby-picorubyvm"

@@ -5,7 +5,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/flash_disk.c
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
-    #${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c #required by spi
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c #required by spi
     #${COMPONENT_DIR}/picoruby/mrbgems/picoruby-adc/ports/esp32/adc.c
     #${COMPONENT_DIR}/picoruby/mrbgems/picoruby-spi/ports/esp32/spi.c
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/esp32/rng.c
@@ -14,7 +14,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-watchdog/ports/esp32/watchdog.c
     #${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
     #${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
-    #${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
   INCLUDE_DIRS
     ${COMPONENT_DIR}
     ${COMPONENT_DIR}/picoruby/include
@@ -24,8 +24,8 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
   PRIV_REQUIRES
-    #esp_driver_gpio
-    #esp_driver_uart
+    esp_driver_gpio
+    esp_driver_uart
     #esp_driver_spi
     #esp_driver_ledc
     #esp_driver_rmt
