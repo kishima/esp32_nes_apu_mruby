@@ -69,6 +69,7 @@ class MidiApu
     @apu.reset
     @apu.write_reg(0x4015, 0x00)  # Disable all channels
     @apu.write_reg(0x4001, 0x00)  # Disable sweep
+    @apu.write_reg(0x4017, 0x40)  # Frame counter 4-step mode
   end
 
   def read
@@ -96,33 +97,80 @@ class MidiApu
   end
 
   def note_on(channel, note, velocity)
-    timer = midi_note_to_timer(note)
-    return if timer.nil?
-    
     volume = velocity_to_volume(velocity)
     
     # Store active note
     @active_notes[channel] = note
     
-    # Square wave 1 settings
-    # 0x4000: Duty cycle 50% (0x80) + disable envelope (0x10) + volume
-    @apu.write_reg(0x4000, 0x90 | volume)
+    # Channel 10 is drums - use noise channel
+    if channel == 10
+      note_on_noise(note, volume)
+    else
+      # Regular notes - use square wave
+      timer = midi_note_to_timer(note)
+      return if timer.nil?
+      
+      # Square wave 1 settings
+      # 0x4000: Duty cycle 50% (0x80) + length counter halt (0x20) + disable envelope (0x10) + volume
+      @apu.write_reg(0x4000, 0xB0 | volume)
+      
+      # 0x4002: Timer low byte
+      @apu.write_reg(0x4002, timer & 0xFF)
+      
+      # 0x4003: Timer high 3 bits + length counter disabled (0x00)
+      @apu.write_reg(0x4003, 0x00 | ((timer >> 8) & 0x07))
+      
+      # Enable square wave 1
+      @apu.write_reg(0x4015, 0x01)
+    end
+  end
+
+  def note_on_noise(note, volume)
+    # Map MIDI drum notes to noise settings
+    # $400C: --LC VVVV (Length counter halt, constant volume, volume)
+    # $400E: L--- PPPP (Loop noise, period)
+    # $400F: LLLLL --- (Length counter load)
     
-    # 0x4002: Timer low byte
-    @apu.write_reg(0x4002, timer & 0xFF)
+    # Different noise periods for different drum sounds
+    period = case note
+    when 36      # C1 - Bass Drum (low frequency noise)
+      0x0F     # Lowest frequency
+    when 38      # D1 - Snare Drum
+      0x04     # Higher frequency for snare
+    when 40..41  # E1-F1 - Electric Snare
+      0x02     # Even higher frequency
+    when 42      # F#1 - Closed Hi-Hat
+      0x00     # Highest frequency
+    else
+      0x08     # Default medium frequency
+    end
     
-    # 0x4003: Timer high 3 bits + length counter (max length)
-    @apu.write_reg(0x4003, 0xF8 | ((timer >> 8) & 0x07))
+    # Use short mode (metallic sound) for hi-hats, long mode for drums
+    mode = (note >= 42) ? 0x80 : 0x00  # Short mode for hi-hats
     
-    # Enable square wave 1
-    @apu.write_reg(0x4015, 0x01)
+    # $400C: Length counter halt + constant volume + volume
+    @apu.write_reg(0x400C, 0x30 | volume)
+    
+    # $400E: Mode (short/long) + period  
+    @apu.write_reg(0x400E, mode | period)
+    
+    # $400F: Length counter (short burst for drums)
+    @apu.write_reg(0x400F, 0x40)
+    
+    # Enable noise channel
+    @apu.write_reg(0x4015, 0x08)
   end
 
   def note_off(channel, note)
     # Only turn off if this note is currently playing
     if @active_notes[channel] == note
-      # Disable square wave 1
-      @apu.write_reg(0x4015, 0x00)
+      if channel == 10
+        # Disable noise channel
+        @apu.write_reg(0x4015, 0x00)
+      else
+        # Disable square wave 1
+        @apu.write_reg(0x4015, 0x00)
+      end
       @active_notes.delete(channel)
     end
   end
@@ -162,7 +210,8 @@ class MidiApu
   end
 
   def process_audio
-    @apu.process(0)  # Internal audio processing
+    #@apu.process(0)  # Internal audio processing
+    @apu.process(1)  # External audio processing
   end
 end
 
