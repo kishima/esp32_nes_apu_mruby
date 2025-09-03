@@ -64,6 +64,7 @@ class MidiApu
     @uart = UART.new(unit: unit, txd_pin: txd_pin, rxd_pin: rxd_pin, baudrate: baudrate)
     @apu = NesApu.new()
     @active_notes = {}  # Track active notes for proper Note Off handling
+    @channel_enable = 0x00  # Track enabled channels
     
     # Initialize APU
     @apu.reset
@@ -121,7 +122,8 @@ class MidiApu
       @apu.write_reg(0x4003, 0x00 | ((timer >> 8) & 0x07))
       
       # Enable square wave 1
-      @apu.write_reg(0x4015, 0x01)
+      @channel_enable |= 0x01
+      @apu.write_reg(0x4015, @channel_enable)
     end
   end
 
@@ -158,7 +160,8 @@ class MidiApu
     @apu.write_reg(0x400F, 0x40)
     
     # Enable noise channel
-    @apu.write_reg(0x4015, 0x08)
+    @channel_enable |= 0x08
+    @apu.write_reg(0x4015, @channel_enable)
   end
 
   def note_off(channel, note)
@@ -166,10 +169,12 @@ class MidiApu
     if @active_notes[channel] == note
       if channel == 10
         # Disable noise channel
-        @apu.write_reg(0x4015, 0x00)
+        @channel_enable &= 0xF7  # Clear bit 3
+        @apu.write_reg(0x4015, @channel_enable)
       else
         # Disable square wave 1
-        @apu.write_reg(0x4015, 0x00)
+        @channel_enable &= 0xFE  # Clear bit 0
+        @apu.write_reg(0x4015, @channel_enable)
       end
       @active_notes.delete(channel)
     end
